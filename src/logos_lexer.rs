@@ -18,7 +18,7 @@ pub enum TokenPreparse<'input> {
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice())]
     Word(&'input str),
 
-    #[regex("(0[xX][0-9a-fA-F]+)|[0-9]+", |lex| lex.slice())]
+    #[regex("[0-9]*[.]?[0-9]*([eE]-[^0][0-9]+[uUlL]?[lL]?[lL]?)?|0[xX][0-9a-fA-F]+[uUlL]?[lL]?[lL]?|[^0][0-9]+[uUlL]?[lL]?[lL]?|0[0-7]+", |lex| lex.slice())]
     Number(&'input str),
 
     //#[regex("\"[^\"]*\"", |lex| lex.slice())]
@@ -238,7 +238,7 @@ pub enum TokenPreparse<'input> {
     Class,
 }
 
-
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
 
     Newline,
@@ -360,7 +360,7 @@ pub enum Token {
 pub enum LexerError {
     UnterminatedString,
     UnterminatedCharacter,
-    UnrecognizedToken,
+    UnrecognizedToken(String),
 }
 
 
@@ -412,9 +412,7 @@ pub fn parse<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         state = ParserState::InPreprocessor(string, preproc_state);
                         continue;
                     },
-                    _ => {
-                        return Err(LexerError::UnrecognizedToken);
-                    },
+                    _ => {},
                 }
 
                 //in_string(&mut lexer)?
@@ -452,9 +450,7 @@ pub fn parse<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                             },
                         }
                     },
-                    _ => {
-                        return Err(LexerError::UnrecognizedToken);
-                    },
+                    _ => {},
                 }
             },
             TokenPreparse::Space => {
@@ -2584,7 +2580,7 @@ pub fn parse<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     _ => {},
                 }
             },
-            _ => return Err(LexerError::UnrecognizedToken),
+            _ => return Err(LexerError::UnrecognizedToken(format!("{:?}",token))),
         }
 
 
@@ -2659,7 +2655,7 @@ mod lexer_test {
     
     #[test]
     fn test_parser_hello_world() {
-        let input = "#include <stdio.h> int main() { printf(\"Hello, World!\");\n return 0; }";
+        let input = "#include <stdio.h>\n int main() {\n printf(\"Hello, World!\");\n return 0;\n }";
         let mut lexer = TokenPreparse::lexer(input);
 
         println!("{:?}", lexer.next());
@@ -2671,6 +2667,13 @@ mod lexer_test {
         println!("{:?}", lexer.next());
         println!("{:?}", lexer.next());
 
+    }
+
+    #[test]
+    fn test_full_parser() {
+        let input = "#include <stdio.h>\n int main() {\n printf(\"Hello, World!\");\n return 0;\n }";
+        
+        println!("{:?}", parse(input));
     }
 
 }
