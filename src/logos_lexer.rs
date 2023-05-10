@@ -383,7 +383,7 @@ enum PreprocessorState {
 }
 
 
-pub fn parse<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
+pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
     let mut tokens = Vec::new();
     
     let mut lexer = TokenPreparse::lexer(input);
@@ -2673,7 +2673,7 @@ mod lexer_test {
     fn test_full_parser() {
         let input = "#include <stdio.h>\n int main() {\n printf(\"Hello, World!\");\n return 0;\n }";
         
-        println!("{:?}", parse(input));
+        println!("{:?}", lex(input));
     }
 
 }

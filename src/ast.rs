@@ -1,3 +1,5 @@
+use crate::logos_lexer::Token;
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstNode {
@@ -87,7 +89,7 @@ pub struct Typedef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Struct {
     pub name: String,
-    pub members: Vec<Variable>,
+    pub members: Vec<VariableList>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -224,6 +226,24 @@ pub enum BaseType {
     Signed,
     Unsigned,
     Bool,
+}
+
+impl BaseType {
+    pub fn from_token(token: &Token) -> BaseType {
+        match token {
+            Token::Void => BaseType::Void,
+            Token::Char => BaseType::Char,
+            Token::Short => BaseType::Short,
+            Token::Int => BaseType::Int,
+            Token::Long => BaseType::Long,
+            Token::Float => BaseType::Float,
+            Token::Double => BaseType::Double,
+            Token::Signed => BaseType::Signed,
+            Token::Unsigned => BaseType::Unsigned,
+            Token::Bool => BaseType::Bool,
+            _ => panic!("Not a base type"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
