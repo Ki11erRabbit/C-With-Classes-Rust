@@ -1,6 +1,49 @@
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstNode {
+    None,
+    Header(Header),
+    Preprocessor(Preprocessor),
+    TypedefType(TypedefType),
+    Typedef(Typedef),
+    Struct(Struct),
+    Union(Union),
+    Enum(Enum),
+    EnumMember(EnumMember),
+    VariableValue(VariableValue),
+    VariableArray(VariableArray),
+    Variable(Variable),
+    VariableList(VariableList),
+    FunctionArgument(FunctionArgument),
+    FunctionPrototype(FunctionPrototype),
+    Function(Function),
+    Class(Class),
+    ClassMember(ClassMember),
+    Method(Method),
+    BaseType(BaseType),
+    CompositeType(CompositeType),
+    TypeType(TypeType),
+    Type(Type),
+    TypeModifier(TypeModifier),
+    PrefixTypeModifier(PrefixTypeModifier),
+    SuffixTypeModifier(SuffixTypeModifier),
+    CodeBlock(CodeBlock),
+    StatementList(StatementList),
+    BlockOrStatement(BlockOrStatement),
+    VariableListOrStatement(VariableListOrStatement),
+    TypeOrExpression(TypeOrExpression),
+    Statement(Statement),
+    SwitchCase(SwitchCase),
+    Expression(Expression),
+    Literal(Literal),
+    UnaryOperator(UnaryOperator),
+    BinaryOperator(BinaryOperator),
+    Initializer(Initializer),
+    Designator(Designator),
 
-#[derive(Debug, Clone)]
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Header {
     pub preprocessor: Vec<String>,
     pub typedefs: Vec<Typedef>,
@@ -13,26 +56,14 @@ pub struct Header {
     pub classes: Vec<Class>,
 }
 
-#[derive(Debug, Clone,)]
-pub enum Preprocessor {
-    IncludeSystem(String),
-    IncludeLocal(String),
-    Define(String, String),
-    DefineFunction(String, Vec<String>, String),
-    Undef(String),
-    If(String, Vec<String>),
-    Ifdef(String, Vec<String>),
-    Ifndef(String, Vec<String>),
-    Else(Vec<String>),
-    Endif,
-    Pragma(Vec<String>),
-    Error(String),
-    Hash(String),
-    DoubleHash(String, usize),
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Preprocessor {
+    pub value: String,
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedefType {
     Struct(Struct),
     Union(Union),
@@ -46,51 +77,51 @@ pub enum TypedefType {
     ArrayType(Type, String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Typedef {
     pub r#type: TypedefType,
     pub name: String,
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Struct {
     pub name: String,
     pub members: Vec<Variable>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Union {
     pub name: String,
     pub members: Vec<Variable>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,  PartialEq)]
 pub struct Enum {
     pub name: String,
     pub members: Vec<EnumMember>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnumMember {
     pub name: String,
     pub value: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,  PartialEq)]
 pub enum VariableValue {
     Expression(Expression),
     String(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VariableArray {
     Size(Expression),
     NoSize,
 
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Variable {
     BasicVar {
         name: String,
@@ -105,7 +136,7 @@ pub enum Variable {
     }, 
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VariableList {
     BasicVars {
         type_: Type,
@@ -114,21 +145,21 @@ pub enum VariableList {
     FunctionPointer(Variable),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FunctionArgument {
     Variable(Variable),
     Type(Type),
     Ellipsis,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionPrototype {
     pub return_type: String,
     pub name: String,
     pub arguments: Vec<FunctionArgument>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub inline: bool,
     pub static_: bool,
@@ -138,20 +169,20 @@ pub struct Function {
     pub body: CodeBlock,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: String,
     pub parent: Option<String>,
     pub members: Vec<ClassMember>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClassMember {
     Variables(Vec<VariableList>),
     Methods(Vec<Method>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Method {
     pub return_type: Type,
     pub name: String,
@@ -159,7 +190,7 @@ pub struct Method {
     pub body: CodeBlock,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Types {
     Void,
     Char,
@@ -181,7 +212,7 @@ pub enum Types {
     Identifier(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BaseType {
     Void,
     Char,
@@ -195,7 +226,7 @@ pub enum BaseType {
     Bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CompositeType {
     Mixed(Vec<BaseType>),
     Struct(String),
@@ -208,25 +239,25 @@ pub enum CompositeType {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeType {
     BaseType(BaseType),
     CompositeType(CompositeType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Type {
     types: TypeType,
     modifiers: Vec<TypeModifier>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeModifier {
     Prefix(PrefixTypeModifier),
     Suffix(SuffixTypeModifier),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PrefixTypeModifier {
     Const,
     Volatile,
@@ -237,44 +268,44 @@ pub enum PrefixTypeModifier {
     Register,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SuffixTypeModifier {
     Restrict,
     Complex,
     Imaginary,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CodeBlock {
     Code(StatementList),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StatementList {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BlockOrStatement {
     Block(CodeBlock),
     Expression(Statement),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VariableListOrStatement {
     VariableList(VariableList),
     Statement(Statement),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeOrExpression {
     pub type_: Type,
     pub expression: Box<Expression>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    Preprocessor(Vec<Preprocessor>),
+    Preprocessor(Preprocessor),
     VariableList(Vec<VariableList>),
     Expression(Expression),
     Return(Expression),
@@ -296,14 +327,14 @@ pub enum Statement {
     Block(Box<CodeBlock>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SwitchCase {
     pub default: bool,
     pub expression: Option<Expression>,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Identifier(String),
     Literal(Literal),
@@ -321,14 +352,14 @@ pub enum Expression {
     Parentheses(Box<Expression>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Number(String),
     Char(String),
     String(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOperator {
     Plus,
     Minus,
@@ -342,7 +373,7 @@ pub enum UnaryOperator {
     PostDecrement,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOperator {
     Add,
     Subtract,
@@ -381,14 +412,14 @@ pub enum BinaryOperator {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Initializer {
     Expression(Box<Expression>),
     List(Vec<Initializer>),
     Designated(Designator, Box<Initializer>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Designator {
     Member(String),
     Index(Box<Expression>),
