@@ -297,26 +297,27 @@ pub enum Token {
     QuestionMark,
     Backslash,
     Hash,
-    Auto,
-    Double,
-    Int,
+    Type(String),
+    //Auto,
+    //Double,
+    //Int,
     Struct,
     Break,
     Else,
-    Long,
+    //Long,
     Switch,
     Case,
     Enum,
-    Register,
+    //Register,
     Typedef,
-    Char,
-    Extern,
+    //Char,
+    //Extern,
     Return,
     Union,
     Continue,
     For,
-    Signed,
-    Void,
+    //Signed,
+    //Void,
     Do,
     If,
     Static,
@@ -324,22 +325,22 @@ pub enum Token {
     Default,
     Goto,
     Sizeof,
-    Volatile,
-    Const,
-    Float,
-    Short,
-    Unsigned,
+    //Volatile,
+    //Const,
+    //Float,
+    //Short,
+    //Unsigned,
     
     //todo check some of these for correctness
-    Restrict,
+    Restrict,// can only appear as * restrict
     Inline,
     Alignas,
     Alignof,
     Atomic,
-    Bool,
-    Complex,
+    //Bool,
+    //Complex,
     Generic,
-    Imaginary,
+    //Imaginary,
     Noreturn,
     StaticAssert,
     ThreadLocal,
@@ -361,6 +362,7 @@ pub enum LexerError {
     UnterminatedString,
     UnterminatedCharacter,
     UnrecognizedToken(String),
+    BadType(String),
 }
 
 
@@ -368,7 +370,15 @@ enum ParserState {
     Normal,
     InString(String, bool),
     InPreprocessor(String, PreprocessorState),
+    InType(String, LastType),
 }
+
+enum LastType {
+    Type,//   //bool, void, char, short, int, long, float, double, signed, unsigned
+    PrefixMod,//const, volatile, auto, register
+    SuffixMod,//complex, imaginary
+}
+
 
 #[derive(Debug, Copy,Clone, PartialEq)]
 enum PreprocessorState {
@@ -1470,7 +1480,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Auto => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Auto);
+                        state = ParserState::InType("auto".to_string(),LastType::PrefixMod);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1482,6 +1492,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("auto");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" auto");
+                        state = ParserState::InType(string,LastType::PrefixMod);
+                        continue;
+                    },
+                    ParserState::InType(mut string, _) => {
+                        return Err(LexerError::BadType(string));
                     },
                     _ => {},
                 }
@@ -1489,7 +1507,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Double => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Double);
+                        state = ParserState::InType("double".to_string(),LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1500,6 +1518,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str("double");
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(mut string, LastType::SuffixMod) => {
+                        return Err(LexerError::BadType(string));
+                    },
+                    ParserState::InType(mut string, _) => {
+                        string.push_str(" double");
+                        state = ParserState::InType(string,LastType::SuffixMod);
                         continue;
                     },
                     _ => {},
@@ -1508,7 +1534,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Int => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Int);
+                        state = ParserState::InType("int".to_string(),LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1519,6 +1545,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str("int");
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(mut string, LastType::SuffixMod) => {
+                        return Err(LexerError::BadType(string));
+                    },
+                    ParserState::InType(mut string, _) => {
+                        string.push_str(" int");
+                        state = ParserState::InType(string,LastType::SuffixMod);
                         continue;
                     },
                     _ => {},
@@ -1584,7 +1618,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Long => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Long);
+                        state = ParserState::InType("long".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1595,6 +1629,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str("long");
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(mut string, LastType::SuffixMod) => {
+                        return Err(LexerError::BadType(string));
+                    },
+                    ParserState::InType(mut string, _) => {
+                        string.push_str(" long");
+                        state = ParserState::InType(string,LastType::SuffixMod);
                         continue;
                     },
                     _ => {},
@@ -1660,7 +1702,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Register => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Register);
+                        state = ParserState::InType("register".to_string(), LastType::PrefixMod);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1672,6 +1714,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("register");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" register");
+                        state = ParserState::InType(string,LastType::PrefixMod);
+                        continue;
+                    },
+                    ParserState::InType(mut string, _) => {
+                        return Err(LexerError::BadType(string));
                     },
                     _ => {},
                 }
@@ -1698,7 +1748,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Char => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Char);
+                        state = ParserState::InType("char".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1709,6 +1759,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str("char");
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(mut string, LastType::SuffixMod) => {
+                        return Err(LexerError::BadType(string));
+                    },
+                    ParserState::InType(mut string, _) => {
+                        string.push_str(" char");
+                        state = ParserState::InType(string,LastType::Type);
                         continue;
                     },
                     _ => {},
@@ -1717,7 +1775,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Extern => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Extern);
+                        state = ParserState::InType("extern".to_string(), LastType::PrefixMod);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1728,6 +1786,11 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str("extern");
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" extern");
+                        state = ParserState::InType(string,LastType::PrefixMod);
                         continue;
                     },
                     _ => {},
@@ -1812,7 +1875,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Signed => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Signed);
+                        state = ParserState::InType("signed".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1824,6 +1887,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("signed");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string,LastType::PrefixMod) => {
+                        string.push_str(" signed");
+                        state = ParserState::InType(string,LastType::Type);
+                        continue;
+                    },
+                    ParserState::InType(mut string,_) => {
+                        return Err(LexerError::BadType(format!("{} signed",string)));
                     },
                     _ => {},
                 }
@@ -1831,7 +1902,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Void => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Void);
+                        state = ParserState::InType("void".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1843,6 +1914,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("void");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" void");
+                        state = ParserState::InType(string,LastType::Type);
+                        continue;
+                    },
+                    ParserState::InType(mut string,_) => {
+                        return Err(LexerError::BadType(format!("{} void",string)));
                     },
                     _ => {},
                 }
@@ -1907,7 +1986,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Volatile => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Volatile);
+                        state = ParserState::InType("volatile".to_string(), LastType::PrefixMod);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1919,6 +1998,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("volatile");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" volatile");
+                        state = ParserState::InType(string,LastType::PrefixMod);
+                        continue;
+                    },
+                    ParserState::InType(mut string,_) => {
+                        return Err(LexerError::BadType(format!("{} volatile",string)));
                     },
                     _ => {},
                 }
@@ -1970,7 +2057,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Short => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Short);
+                        state = ParserState::InType("short".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -1981,6 +2068,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str("short");
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(mut string, LastType::SuffixMod) => {
+                        return Err(LexerError::BadType(format!("{} short",string)));
+                    },
+                    ParserState::InType(mut string, _) => {
+                        string.push_str(" short");
+                        state = ParserState::InType(string,LastType::Type);
                         continue;
                     },
                     _ => {},
@@ -1989,7 +2084,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Unsigned => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Unsigned);
+                        state = ParserState::InType("unsigned".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -2000,6 +2095,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str("unsigned");
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(mut string, LastType::SuffixMod) => {
+                        return Err(LexerError::BadType(format!("{} unsigned",string)));
+                    },
+                    ParserState::InType(mut string, _) => {
+                        string.push_str(" unsigned");
+                        state = ParserState::InType(string,LastType::Type);
                         continue;
                     },
                     _ => {},
@@ -2065,7 +2168,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Const => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Const);
+                        state = ParserState::InType("const".to_string(), LastType::PrefixMod);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -2077,6 +2180,13 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("const");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" const");
+                        state = ParserState::InType(string,LastType::PrefixMod);
+                    }
+                    ParserState::InType(mut string, _) => {
+                        return Err(LexerError::BadType(format!("{} const",string)));
                     },
                     _ => {},
                 }
@@ -2084,7 +2194,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Float => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Float);
+                        state = ParserState::InType("float".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -2097,6 +2207,14 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         state = ParserState::InString(string,false);
                         continue;
                     },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" float");
+                        state = ParserState::InType(string,LastType::Type);
+                    },
+                    ParserState::InType(mut string, _) => {
+                        return Err(LexerError::BadType(format!("{} float",string)));
+                    },
+
                     _ => {},
                 }
             },
@@ -2122,7 +2240,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Bool => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Bool);
+                        state = ParserState::InType("bool".to_string(), LastType::Type);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string, preproc_state) => {
@@ -2135,13 +2253,20 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         state = ParserState::InString(string,false);
                         continue;
                     },
+                    ParserState::InType(mut string, LastType::PrefixMod) => {
+                        string.push_str(" bool");
+                        state = ParserState::InType(string,LastType::Type);
+                    },
+                    ParserState::InType(mut string, _) => {
+                        return Err(LexerError::BadType(format!("{} bool",string)));
+                    },
                     _ => {},
                 }
             },
             TokenPreparse::Complex => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Complex);
+                        state = ParserState::InType("complex".to_string(), LastType::SuffixMod);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -2153,6 +2278,13 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("complex");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string, LastType::Type) => {
+                        string.push_str(" complex");
+                        state = ParserState::InType(string,LastType::SuffixMod);
+                    },
+                    ParserState::InType(mut string, _) => {
+                        return Err(LexerError::BadType(format!("{} complex",string)));
                     },
                     _ => {},
                 }
@@ -2160,7 +2292,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
             TokenPreparse::Imaginary => {
                 match state {
                     ParserState::Normal => {
-                        tokens.push(Token::Imaginary);
+                        state = ParserState::InType("imaginary".to_string(), LastType::SuffixMod);
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
@@ -2172,6 +2304,13 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         string.push_str("imaginary");
                         state = ParserState::InString(string,false);
                         continue;
+                    },
+                    ParserState::InType(mut string, LastType::Type) => {
+                        string.push_str(" imaginary");
+                        state = ParserState::InType(string,LastType::SuffixMod);
+                    },
+                    ParserState::InType(mut string, _) => {
+                        return Err(LexerError::BadType(format!("{} imaginary",string)));
                     },
                     _ => {},
                 }
@@ -2556,6 +2695,11 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push_str(word);
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        state = ParserState::Normal;
                         continue;
                     },
                     _ => {},

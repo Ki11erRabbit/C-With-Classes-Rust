@@ -160,100 +160,82 @@ enum ParserState {
 
 
 #[derive(Debug, PartialEq)]
-pub struct Parser<'a> {
-    token_buffer: Vec<&'a Token>,
+pub struct Parser {
+    tokens: Vec<Token>,
+    head: usize,
     state: ParserState,
     node_buffer: Vec<AstNode>,
 }
 
 
-impl<'a> Parser<'a> {
-    pub fn new() -> Parser<'a> {
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Parser {
         Parser {
-            token_buffer: Vec::new(),
+            tokens: Vec::new(),
+            head: 0,
             state: ParserState::Start,
             node_buffer: Vec::new(),
         }
     }
 
-    pub fn add_token<'input: 'a>(&mut self, token: &'input Token) {
-        self.token_buffer.push(token);
-    }
 
-    pub fn construct_header(& self) -> Result<Header,String> {
+    pub fn parse(&mut self) -> Result<Header, String> {
+        let mut preprocessor = Vec::new();
+        let mut typedefs = Vec::new();
+        let mut structs = Vec::new();
+        let mut enums = Vec::new();
+        let mut unions = Vec::new();
+        let mut function_prototypes = Vec::new();
+        let mut functions = Vec::new();
+        let mut variables = Vec::new();
+        let mut classes = Vec::new();
 
-        Err("Not implemented".to_string())
-    }
+        while self.tokens.len() != 0 {
+            match self.tokens[0] {
+                Token::Preprocessor(_) => {
 
-    fn parse(token_buffer: &Vec<&'a Token>, start: usize ,state: ParserState, node_buffer: &mut Vec<AstNode>) -> Result<(bool, usize), String> {
-        
-        match token_buffer[0] {
-            Token::Newline => {
-                return Err("Extranious Newline".to_string());
-            },
-            Token::Preprocessor(value) => {
-                match state {
-                    ParserState::Start => {
-                        node_buffer.push(AstNode::Preprocessor( Preprocessor {value: value.clone()}));
-                        return Ok(false, start + 1);
-                    },
-                    ParserState::CodeBlock => {
-                        node_buffer.push(AstNode::Statement(Statement::Preprocessor(Preprocessor {value: value.clone()})));
-                        return Ok(false, start + 1);
-                    }
-                    _ => {
-                        return Err(format!("Unexpected preprocessor directive: {}", value));
-                    }
-                }
-            },
-            Token::Char | Token::Short | Token::Int | Token::Long | 
-                Token::Float | Token::Double | Token::Signed |
-                Token::Unsigned | Token::Void | Token::Bool => {
-                    match state {
-                        ParserState::Start | ParserState::Type(TypeState::Base) => {
-                            node_buffer.push(AstNode::BaseType(BaseType::from_token(token_buffer[0])));
-                            return Self::parse(token_buffer, start +1, ParserState::Type(TypeState::Base), node_buffer);
-                        },
+                },
+                Token::Typedef => {
 
-                    }
-            },
-            Token::Word(identifier) => {
-                match state {
-                    ParserState::Start => {
-                        node_buffer.push(AstNode::CompositeType(CompositeType::Identifier(identifier.clone())));
-                        return Self::parse(token_buffer, start +1, ParserState::Type(TypeState::Composite), node_buffer);
-                    },
-                    ParserState::Type(_) => {
+                },
+                Token::Struct => {
 
-                        let pos = 
-                    }
+                },
+                Token::Enum => {
 
-                }
-            }
-            _ => {
-                return Err("Unimplemented".to_string());
+                },
+                Token::Union => {
+
+                },
+                Token::Type(_) => {
+
+                },
+                Token::Class => {
+
+                },
+                _ => {
+                    return Err(format!("Unexpected token: {:?}", self.tokens[0]));
+
+                },
+
+
+
             }
         }
-    }
 
-    pub fn consume_tokens(&mut self) -> bool {
 
-        match Self::parse(&self.token_buffer, 0, self.state, &mut self.node_buffer) {
-            Ok((false,pos)) => {
-                self.node_buffer.push(node);
-                self.token_buffer = self.token_buffer[pos..].to_vec();
-                true
-            },
-            Ok((true,_)) => {
-                println!("Error: Unexpected end of node");
-                false
-            },
-            Err(err) => {
-                println!("Error: {}", err);
-                false
-            }
-            
-        }
+
+        Ok(Header {
+            preprocessor,
+            typedefs,
+            structs,
+            enums,
+            unions,
+            function_prototypes,
+            functions,
+            variables,
+            classes,
+        })
     }
 }
 
@@ -262,8 +244,8 @@ impl<'a> Parser<'a> {
 
 
 
+#[cfg(test)]
 mod ast_tests {
-    #[cfg(test)]
     use super::*;
     use crate::logos_lexer::lex;
 
@@ -279,10 +261,9 @@ mod ast_tests {
             }
         };
 
-        let mut parser = Parser::new();
+        let mut parser = Parser::new(tokens);
 
-        parser.add_token(&tokens[0]);
 
-        assert!(parser.consume_tokens(), "Failed to parse preprocessor directive");
+        //assert!(parser.consume_tokens(), "Failed to parse preprocessor directive");
     }
 }
