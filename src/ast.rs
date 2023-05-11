@@ -47,7 +47,7 @@ pub enum AstNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Header {
-    pub preprocessor: Vec<String>,
+    pub preprocessor: Vec<Preprocessor>,
     pub typedefs: Vec<Typedef>,
     pub structs: Vec<Struct>,
     pub unions: Vec<Union>,
@@ -128,6 +128,7 @@ pub enum Variable {
     BasicVar {
         name: String,
         pointer: usize,
+        restrict: bool,
         array: Option<Vec<VariableArray>>,
         value: Option<VariableValue>,
     },
@@ -137,6 +138,7 @@ pub enum Variable {
         arguments: Vec<FunctionArgument>,
     }, 
 }
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariableList {
@@ -244,14 +246,28 @@ pub enum CompositeType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeType {
-    BaseType(BaseType),
+    BaseType(String),
     CompositeType(CompositeType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
     types: TypeType,
-    modifiers: Vec<TypeModifier>,
+}
+
+
+impl Type {
+    pub fn from_token(token: Token) -> Result<Self,String> {
+        match token {
+            Token::Type(types) => Ok(Self {
+                types: TypeType::BaseType(types),
+            }),
+            Token::Word(name) => Ok(Self {
+                types: TypeType::CompositeType(CompositeType::Identifier(name)),
+            }),
+            _ => Err(format!("Expected type, got {:?}",token)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
