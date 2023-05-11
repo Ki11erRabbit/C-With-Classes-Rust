@@ -559,7 +559,6 @@ impl Parser {
             match self.tokens[0] {
                 Token::Preprocessor(_) => {
                     header_statements.append(self.preprocessors()?.iter().map(|x| HeaderStatement::Preprocessor(x.clone())).collect::<Vec<HeaderStatement>>().as_mut());
-                    self.tokens = self.tokens[self.head..].to_vec();
 
                 },
                 Token::Typedef => {
@@ -595,14 +594,16 @@ impl Parser {
                 Token::Static | Token::Inline => {
 
                 },
+                Token::Newline => {
+                    self.head += 1;
+                    header_statements.push(HeaderStatement::Whitespace);
+                },
                 _ => {
                     return Err(format!("Unexpected token: {:?}", self.tokens[0]));
 
                 },
-
-
-
             }
+            self.tokens = self.tokens[self.head..].to_vec();
         }
 
 
