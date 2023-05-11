@@ -553,20 +553,12 @@ impl Parser {
 
 
     pub fn parse(&mut self) -> Result<Header, String> {
-        let mut preprocessor = Vec::new();
-        let mut typedefs = Vec::new();
-        let mut structs = Vec::new();
-        let mut enums = Vec::new();
-        let mut unions = Vec::new();
-        let mut function_prototypes = Vec::new();
-        let mut functions = Vec::new();
-        let mut variables = Vec::new();
-        let mut classes = Vec::new();
+        let mut header_statements = Vec::new();
 
         while self.tokens.len() != 0 {
             match self.tokens[0] {
                 Token::Preprocessor(_) => {
-                    preprocessor.append(&mut self.preprocessors()?);
+                    header_statements.append(self.preprocessors()?.iter().map(|x| HeaderStatement::Preprocessor(x.clone())).collect::<Vec<HeaderStatement>>().as_mut());
                     self.tokens = self.tokens[self.head..].to_vec();
 
                 },
@@ -586,10 +578,10 @@ impl Parser {
                     let node = self.variable_list_or_function()?;
                     match node {
                         AstNode::VariableList(variable_list) => {
-                            variables.push(variable_list);
+                            header_statements.push(HeaderStatement::Variable(variable_list));
                         },
                         AstNode::Function(function) => {
-                            functions.push(function);
+                            header_statements.push(HeaderStatement::Function(function));
                         },
                         _ => {
                             return Err(format!("Unexpected node: {:?}", node));
@@ -615,17 +607,7 @@ impl Parser {
 
 
 
-        Ok(Header {
-            preprocessor,
-            typedefs,
-            structs,
-            enums,
-            unions,
-            function_prototypes,
-            functions,
-            variables,
-            classes,
-        })
+        Ok(Header { statements: header_statements })
     }
 }
 

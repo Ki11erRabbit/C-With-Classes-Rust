@@ -5,6 +5,7 @@ use crate::logos_lexer::Token;
 pub enum AstNode {
     None,
     Header(Header),
+    HeaderStatement(HeaderStatement),
     Preprocessor(Preprocessor),
     TypedefType(TypedefType),
     Typedef(Typedef),
@@ -47,17 +48,22 @@ pub enum AstNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Header {
-    pub preprocessor: Vec<Preprocessor>,
-    pub typedefs: Vec<Typedef>,
-    pub structs: Vec<Struct>,
-    pub unions: Vec<Union>,
-    pub enums: Vec<Enum>,
-    pub variables: Vec<VariableList>,
-    pub function_prototypes: Vec<FunctionPrototype>,
-    pub functions: Vec<Function>,
-    pub classes: Vec<Class>,
+    pub statements: Vec<HeaderStatement>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum HeaderStatement {
+    Preprocessor(Preprocessor),
+    Typedef(Typedef),
+    Struct(Struct),
+    Union(Union),
+    Enum(Enum),
+    Variable(VariableList),
+    FunctionPrototype(FunctionPrototype),
+    Function(Function),
+    Class(Class),
+    Whitespace,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Preprocessor {
