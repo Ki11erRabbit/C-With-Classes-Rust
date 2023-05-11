@@ -134,7 +134,10 @@ pub enum Variable {
     },
     FunctionPointer {
         return_type: Type,
-        name: String,
+        return_pointer: usize,
+        pointer: usize,
+        name: Option<String>,
+        array: Option<Vec<VariableArray>>,
         arguments: Vec<FunctionArgument>,
     }, 
 }
@@ -151,8 +154,9 @@ pub enum VariableList {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FunctionArgument {
-    Variable(Variable),
-    Type(Type),
+    FunctionPointer(Variable),
+    Variable(Type, Variable),
+    Type(Type,usize),
     Ellipsis,
 }
 

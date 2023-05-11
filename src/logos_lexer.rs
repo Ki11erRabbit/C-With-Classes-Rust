@@ -568,6 +568,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                             },
                         }
                     },
+
                     _ => {},
                 }
             },
@@ -619,6 +620,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         state = ParserState::InString(string,false);
                         continue;
                     },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::Comment(comment.to_string()));
+                        state = ParserState::Normal;
+                        continue;
+                    },
                     _ => {},
                 }
             },
@@ -636,6 +643,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push(';');
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::SemiColon);
+                        state = ParserState::Normal;
                         continue;
                     },
                     _ => {},
@@ -657,6 +670,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         state = ParserState::InString(string,false);
                         continue;
                     },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::Colon);
+                        state = ParserState::Normal;
+                        continue;
+                    },
                     _ => {},
                 }
             },
@@ -674,6 +693,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push(',');
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::Comma);
+                        state = ParserState::Normal;
                         continue;
                     },
                     _ => {},
@@ -733,6 +758,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         state = ParserState::InString(string,false);
                         continue;
                     },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::RightParen);
+                        state = ParserState::Normal;
+                        continue;
+                    },
                     _ => {},
                 }
             },
@@ -788,6 +819,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push('[');
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::LeftBracket);
+                        state = ParserState::Normal;
                         continue;
                     },
                     _ => {},
@@ -1548,7 +1585,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         continue;
                     },
                     ParserState::InType(mut string, LastType::SuffixMod) => {
-                        return Err(LexerError::BadType(string));
+                        return Err(LexerError::BadType(format!("{} int",string)));
                     },
                     ParserState::InType(mut string, _) => {
                         string.push_str(" int");
@@ -2699,6 +2736,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     },
                     ParserState::InType(string, _) => {
                         tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::Word(word.to_string()));
                         state = ParserState::Normal;
                         continue;
                     },
