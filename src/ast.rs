@@ -368,15 +368,16 @@ pub struct SwitchCase {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
+    Blank,
     Identifier(String),
     Literal(Literal),
     Sizeof(TypeOrExpression),
     Alignof(Type, usize),
-    Cast(Type,bool, Box<Expression>),
     Unary(UnaryOperator, Box<Expression>),
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>),
-    Call(String, Option<Vec<Expression>>),
+    CallFunction(String, Option<Box<Expression>>),
+    CallMethod(bool, String, String, Option<Box<Expression>>),
     CompoundLiteral(Type, bool,Initializer),
     InitializerList(Vec<Initializer>),
     StatementList(StatementList),
@@ -397,12 +398,14 @@ pub enum UnaryOperator {
     Minus,
     Not,
     BitwiseNot,
+    LogicalNot,
     Dereference,
     AddressOf,
     PreIncrement,
     PreDecrement,
     PostIncrement,
     PostDecrement,
+    Cast(Type,usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -440,6 +443,7 @@ pub enum BinaryOperator {
     MemberAccess,
     PointerMemberAccess,
     Index,
+    ArrayAccess,
 
 }
 

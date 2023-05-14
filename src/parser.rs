@@ -764,7 +764,7 @@ impl Parser {
 
                 },
                 _ => {
-                    expression = Some(self.expression()?);
+                    expression = Some(self.expression(None)?);
                     requires_semicolon = true;
                 },
                 
@@ -862,7 +862,7 @@ impl Parser {
             },
             _ => {
                 found_second = true;
-                Some(self.expression()?)
+                Some(self.expression(None)?)
             },
         };
         if found_second {
@@ -884,7 +884,7 @@ impl Parser {
             },
             _ => {
                 found_third = true;
-                Some(self.expression()?)
+                Some(self.expression(None)?)
             },
         };
         if found_third {
@@ -955,7 +955,7 @@ impl Parser {
         match self.tokens[self.head] {
             Token::LeftParen => {
                 self.head += 1;
-                let expression = self.expression()?;
+                let expression = self.expression(None)?;
                 match self.tokens[self.head] {
                     Token::RightParen => {
                         self.head += 1;
@@ -1014,13 +1014,412 @@ impl Parser {
 
         match expression {
             Some(expression) => {
-                full_expression = Some(expression);
+                match self.tokens[self.head] {
+                    Token::LeftBracket => {
+                        let expr = self.expression(None)?;
+                        match self.tokens[self.head] {
+                            RightBracket => {
+                                self.head += 1;
+                                full_expression = Some(self.expression(Some(Expression::Binary(
+                                    BinaryOperator::ArrayAccess,
+                                    Box::new(expression),
+                                    Box::new(expr),)))?);
+                            },
+                            _ => {
+                                return Err("Expected right bracket".to_string());
+                            },
+                        }
+                        
+                    },
+                    Token::Add => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Add,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::Minus => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Subtract,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::Star => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Multiply,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::Divide => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Divide,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::Modulo => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Modulo,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseLeftShift => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::LeftShift,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseRightShift => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::RightShift,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseAnd => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::BitwiseAnd,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseOr => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::BitwiseOr,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseXor => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::BitwiseXor,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::Equals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Equal,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::NotEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::NotEqual,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::LessThan => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::LessThan,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::LessThanOrEqual => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::LessThanOrEqual,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::GreaterThan => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::GreaterThan,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::GreaterThanOrEqual => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::GreaterThanOrEqual,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::LogicalAnd => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::LogicalAnd,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::LogicalOr => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::LogicalOr,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::Increment => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(
+                            UnaryOperator::PostIncrement,
+                            Box::new(expression),));
+
+                    },
+                    Token::Decrement => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(
+                            UnaryOperator::PostDecrement,
+                            Box::new(expression),));
+
+                    },
+                    Token::Assignment => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Assign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::PlusEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::AddAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::MinusEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::SubtractAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::StarEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::MultiplyAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::DivideEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::DivideAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::ModuloEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::ModuloAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseLeftShiftEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::LeftShiftAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseRightShiftEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::RightShiftAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseAndEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::BitwiseAndAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseXorEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::BitwiseXorAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    Token::BitwiseOrEquals => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::BitwiseOrAssign,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
+
+                    },
+                    
+                    
+                    
+
+
+
+                }
+
+
+
+
+                return Ok(full_expression.unwrap());
             },
             None => {
                 match self.tokens[self.head] {
                     Token::Word(ident) => {//check for function call or typedef
                         self.head += 1;
-                        full_expression = Some(Expression::Identifier(ident));
+
+                        match self.tokens[self.head] {
+                            Token::LeftParen => {
+                                self.head += 1;
+
+                                let arguments = match self.expression(None)? {
+                                    Expression::Blank => {
+                                        None
+                                    },
+                                    _ => {
+                                        Some(Box::new(self.expression(None)?))
+                                    },
+
+                                };
+
+                                match self.tokens[self.head] {
+                                    Token::RightParen => {
+                                        self.head += 1;
+                                        full_expression = Some(self.expression(Some(Expression::CallFunction(ident, arguments)))?);
+                                    },
+                                    _ => {
+                                        return Err("Expected right parenthesis".to_string());
+                                    },
+                                }
+                                
+                            },
+                            Token::Period => {
+                                self.head += 1;
+                                let member = match self.tokens[self.head] {
+                                    Token::Word(ident) => {
+                                        self.head += 1;
+                                        ident
+                                    },
+                                    _ => {
+                                        return Err("Expected identifier".to_string());
+                                    },
+                                };
+
+                                match self.tokens[self.head] {
+                                    Token::LeftParen => {
+                                        self.head += 1;
+
+                                        let arguments = match self.expression(None)? {
+                                            Expression::Blank => {
+                                                None
+                                            },
+                                            _ => {
+                                                Some(Box::new(self.expression(None)?))
+                                            },
+
+                                        };
+
+                                        match self.tokens[self.head] {
+                                            Token::RightParen => {
+                                                self.head += 1;
+                                                full_expression = Some(self.expression(Some(Expression::CallMethod(false, ident, member, arguments)))?);
+                                            },
+                                            _ => {
+                                                return Err("Expected right parenthesis".to_string());
+                                            },
+                                        }
+                                        
+                                    },
+
+                                    _ => {
+                                        full_expression = Some(self.expression(Some(
+                                            Expression::Binary(BinaryOperator::MemberAccess,
+                                                Box::new(Expression::Identifier(ident)),
+                                                Box::new(Expression::Identifier(member))
+                                            )))?);
+                                    },
+                                }                                
+                            },
+                            Token::Arrow => {
+                                self.head += 1;
+                                let member = match self.tokens[self.head] {
+                                    Token::Word(ident) => {
+                                        self.head += 1;
+                                        ident
+                                    },
+                                    _ => {
+                                        return Err("Expected identifier".to_string());
+                                    },
+                                };
+
+                                match self.tokens[self.head] {
+                                    Token::LeftParen => {
+                                        self.head += 1;
+
+                                        let arguments = match self.expression(None)? {
+                                            Expression::Blank => {
+                                                None
+                                            },
+                                            _ => {
+                                                Some(Box::new(self.expression(None)?))
+                                            },
+
+                                        };
+
+                                        match self.tokens[self.head] {
+                                            Token::RightParen => {
+                                                self.head += 1;
+                                                full_expression = Some(self.expression(Some(Expression::CallMethod(true, ident, member, arguments)))?);
+                                            },
+                                            _ => {
+                                                return Err("Expected right parenthesis".to_string());
+                                            },
+                                        }
+                                        
+                                    },
+
+                                    _ => {
+                                        full_expression = Some(self.expression(Some(
+                                            Expression::Binary(BinaryOperator::PointerMemberAccess,
+                                                Box::new(Expression::Identifier(ident)),
+                                                Box::new(Expression::Identifier(member))
+                                            )))?);
+                                    },
+                                }                                
+
+
+                            },
+                            _ => {
+                                full_expression = Some(self.expression(Some(Expression::Identifier(ident)))?);
+                            },
+                        }
                     },
                     Token::Number(num) => {
                         self.head += 1;
@@ -1036,30 +1435,123 @@ impl Parser {
                     },
                     Token::LeftParen => {//check for cast, compoundLiteral
                         self.head += 1;
-                        let expression = self.expression(None)?;
                         match self.tokens[self.head] {
-                            Token::RightParen => {
+                            Token::Type(the_type) => {
                                 self.head += 1;
-                                full_expression = Some(expression);
+                                match self.tokens[self.head] {
+                                    Token::RightParen => {
+                                        self.head += 1;
+                                        let pointer = match self.tokens[self.head] {
+                                            Token::Star => {
+                                                self.head += 1;
+                                                let ptr = 1;
+                                                while self.tokens[self.head] == Token::Star {
+                                                    self.head += 1;
+                                                    ptr += 1;
+                                                }
+                                                ptr
+                                            },
+                                            _ => {
+                                                0
+                                            },
+                                        };
+                                        full_expression = Some(
+                                            Expression::Unary(UnaryOperator::Cast(Type::from_token(self.tokens[self.head - 1])?,
+                                                                                  pointer),
+                                                              Box::new(self.expression(None)?)));
+                                    },
+                                    _ => {
+                                        return Err("Expected right parenthesis".to_string());
+                                    },
+                                }
                             },
                             _ => {
-                                return Err("Expected right parenthesis".to_string());
+                                let expression = self.expression(None)?;
+                                match self.tokens[self.head] {
+                                    Token::RightParen => {
+                                        self.head += 1;
+                                        full_expression = Some(Expression::Parentheses(Box::new(expression)));
+                                    },
+                                    _ => {
+                                        return Err("Expected right parenthesis".to_string());
+                                    },
+                                }
                             },
+
                         }
                     },
+                    Token::Increment => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::PreIncrement, Box::new(self.expression(None)?)));
+                    },
+                    Token::Decrement => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::PreDecrement, Box::new(self.expression(None)?)));
+                    },
+                    Token::Star => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::Dereference, Box::new(self.expression(None)?)));
+                    },
+                    Token::BitwiseAnd => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::AddressOf, Box::new(self.expression(None)?)));
+                    },
+                    Token::Plus => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::Plus, Box::new(self.expression(None)?)));
+                    },
+                    Token::Minus => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::Minus, Box::new(self.expression(None)?)));
+                    },
+                    Token::LogicalNot => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::LogicalNot, Box::new(self.expression(None)?)));
+                    },
+                    Token::BitwiseNot => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Unary(UnaryOperator::BitwiseNot, Box::new(self.expression(None)?)));
+                    },
+                    Token::Sizeof => {
+                        self.head += 1;
+                        let type_or_expression = self.type_or_expression()?;
+
+                        full_expression = Some(Expression::Sizeof(type_or_expression));
+
+                    },
+                    Token::LeftBrace => {
+                        self.head += 1;
+                        let mut initializers = Vec::new();
+                        let mut first = true;
+                        while self.tokens[self.head] != Token::RightBrace {
+                            if !first {
+                                match self.tokens[self.head] {
+                                    Token::Comma => {
+                                        self.head += 1;
+                                    },
+                                    _ => {
+                                        return Err("Expected comma".to_string());
+                                    },
+                                }
+                            }
+                            first = false;
+                            let initializer = self.initializer()?;
+                            initializers.push(initializer);
+                        }
+                        self.head += 1;
+
+                    },
+                    _ => {
+                        return Err(format!("Unexpected token {:?}", self.tokens[self.head]));
+                    },
                     
-                    
-                    
-
-
-
-
                 }
+
+                return Ok(full_expression.unwrap());
             },
 
         }
 
-        return Err("Unexpected end of file".to_string());
     }
 
     pub fn parse(&mut self) -> Result<Header, String> {
