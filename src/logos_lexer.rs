@@ -363,6 +363,7 @@ pub enum LexerError {
     UnterminatedCharacter,
     UnrecognizedToken(String),
     BadType(String),
+    Empty,
 }
 
 
@@ -397,7 +398,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
     let mut tokens = Vec::new();
     
     let mut lexer = TokenPreparse::lexer(input);
-
+    
     let mut state = ParserState::Normal;
 
     while let Some(Ok(token)) = lexer.next() {
@@ -739,6 +740,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         state = ParserState::InString(string,false);
                         continue;
                     },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::LeftParen);
+                        state = ParserState::Normal;
+                        continue;
+                    },
                     _ => {},
                 }
             },
@@ -901,6 +908,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     ParserState::InString(mut string,_) => {
                         string.push('*');
                         state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    ParserState::InType(string, _) => {
+                        tokens.push(Token::Type(string.to_string()));
+                        tokens.push(Token::Star);
+                        state = ParserState::Normal;
                         continue;
                     },
                     _ => {},
@@ -2770,7 +2783,9 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
 
     }
 
-
+    if tokens.len() == 0 {
+        return Err(LexerError::Empty);
+    }
 
     Ok(tokens)
 }

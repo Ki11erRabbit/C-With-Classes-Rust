@@ -329,9 +329,9 @@ pub enum VariableListOrStatement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeOrExpression {
-    pub type_: Type,
-    pub expression: Box<Expression>,
+pub enum TypeOrExpression {
+    Type(Type,usize),
+    Expression(Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -378,8 +378,9 @@ pub enum Expression {
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>),
     CallFunction(String, Option<Box<Expression>>),
     CallMethod(bool, String, String, Option<Box<Expression>>),
-    CompoundLiteral(Type, bool,Initializer),
-    InitializerList(Vec<Initializer>),
+    InitializerList(Box<Expression>),
+    //CompoundLiteral(Type, bool,Initializer),
+    //InitializerList(Vec<Initializer>),
     StatementList(StatementList),
     Expression(Box<Expression>),
     Parentheses(Box<Expression>),
@@ -390,6 +391,7 @@ pub enum Literal {
     Number(String),
     Char(String),
     String(String),
+    Bool(bool),
 }
 
 #[derive(Debug, Clone, PartialEq)]

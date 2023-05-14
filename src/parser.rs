@@ -1,171 +1,15 @@
 
-use std::arch::x86_64::_XCR_XFEATURE_ENABLED_MASK;
 
 use crate::ast::*;
 use crate::logos_lexer::Token;
 
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum TypedefState {
-    Start,
-    Struct,
-    Union,
-    Enum,
-    Variable,
-    FunctionPrototype,
-    Function,
-    Class,
-    Type,
-    PointerType,
-    ArrayType,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum StructState {
-    Start,
-    Body,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum EnumState {
-    Start,
-    Body,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum UnionState {
-    Start,
-    Body,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum FunctionState {
-    Start,
-    Prototype,
-    Arguments,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum VariableState1 {
-    Start,
-    List,
-    Single,
-    Basic,
-    Pointer,
-    FunctionPointer,
-    Array,
-    End,
-}
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum VariableState2 {
-    List,
-    Single,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum ClassState {
-    Start,
-    Member,
-    Method,
-    MemberOrMethod,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum TypeState {
-    Start,
-    PrefixMod,
-    SuffixMod,
-    Base,
-    Composite,
-    Identifier,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum StatementState {
-    Start,
-    Preprocessor,
-    Variable,
-    Expression,
-    Return,
-    If,
-    Else,
-    While,
-    For,
-    DoWhile,
-    Switch(SwitchState),
-    Break,
-    Continue,
-    Goto,
-    Label,
-    CodeBlock,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum SwitchState {
-    Start,
-    Case,
-    Body,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum ExpressionState {
-    Start,
-    Identifier,
-    Literal,
-    Parenthesis,
-    Sizeof,
-    Alignof,
-    Cast,
-    Call,
-    CompoundLiteral,
-    InitializerList,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum OperatorState {
-    Start,
-    None,
-    Unary,
-    Binary,
-    Ternary,
-    End,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum ParserState {
-    Start,
-    Preprocessor,
-    Typedef(TypedefState),
-    Struct(StructState),
-    Enum(EnumState),
-    Union(UnionState),
-    FunctionOrVariable,
-    Function(FunctionState),
-    Variable(VariableState1, VariableState2),
-    Class(ClassState),
-    Type(TypeState),
-    CodeBlock,
-    Statement(StatementState),
-    Expression(ExpressionState, OperatorState),
-    End,
-}
 
 
 #[derive(Debug, PartialEq)]
 pub struct Parser {
     tokens: Vec<Token>,
     head: usize,
-    state: ParserState,
     node_buffer: Vec<AstNode>,
 }
 
@@ -173,9 +17,8 @@ pub struct Parser {
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Parser {
         Parser {
-            tokens: Vec::new(),
+            tokens: tokens,
             head: 0,
-            state: ParserState::Start,
             node_buffer: Vec::new(),
         }
     }
@@ -183,7 +26,7 @@ impl Parser {
     fn preprocessors(&mut self) -> Result<Vec<Preprocessor>, String> {
         let mut preprocessor = Vec::new();
 
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             match &self.tokens[self.head] {
                 Token::Preprocessor(data) => {
                     preprocessor.push(Preprocessor {value: data.clone()});
@@ -200,14 +43,14 @@ impl Parser {
 
     fn variable_value(&mut self) -> Result<VariableValue,String> {
 
-        match &self.tokens[self.head+1] {
+        match &self.tokens[self.head] {
             Token::String(data) => {
-                self.head += 2;
+                self.head += 1;
                 Ok(VariableValue::String(data.clone()))
             },
             _ => {
                 self.head += 1;
-                Ok(VariableValue::Expression(self.expression()?))
+                Ok(VariableValue::Expression(self.expression(None)?))
             },
         }
 
@@ -217,25 +60,16 @@ impl Parser {
     fn variable_list(&mut self) -> Result<Vec<Variable>,String> {
 
         let mut variable_list = Vec::new();
+        let mut var_name = String::new();
         let mut pointer = 0;
         let mut value = None;
         let mut array = None;
         let mut restrict = false;
         
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             match &self.tokens[self.head] {
                 Token::Word(name) => {
-                    variable_list.push(Variable::BasicVar {
-                        name: name.clone(),
-                        pointer: pointer,
-                        restrict: restrict,
-                        array: array,
-                        value: value,
-                    });
-                    pointer = 0;
-                    value = None;
-                    array = None;
-                    restrict = false;
+                    var_name = name.clone();
                     self.head += 1;
                 },
                 Token::Star => {
@@ -254,8 +88,32 @@ impl Parser {
                     self.head += 1;
                 },
                 Token::SemiColon => {
-                    self.head += 1;
+                    variable_list.push(Variable::BasicVar {
+                        name: var_name.clone(),
+                        pointer: pointer,
+                        restrict: restrict,
+                        array: array,
+                        value: value,
+                    });
+                    pointer = 0;
+                    value = None;
+                    array = None;
+                    restrict = false;
                     return Ok(variable_list);
+                },
+                Token::Comma => {
+                    variable_list.push(Variable::BasicVar {
+                        name: var_name.clone(),
+                        pointer: pointer,
+                        restrict: restrict,
+                        array: array,
+                        value: value,
+                    });
+                    pointer = 0;
+                    value = None;
+                    array = None;
+                    restrict = false;
+                    self.head += 1;
                 },
                 _ => {
                     return Err(format!("Unexpected token: {:?}", self.tokens[self.head]));
@@ -268,6 +126,7 @@ impl Parser {
     fn variable_dec(&mut self) -> Result<AstNode, String> {
 
         let mut node = AstNode::None;
+        let mut var_name = String::new();
         let mut the_type = None;
         let mut pointer = 0;
         let mut value = None;
@@ -275,38 +134,61 @@ impl Parser {
         let mut variable_list = Vec::new();
         
         
-        for i in 0..=self.head {
-            let token = &self.tokens[i];
+        while self.head < self.tokens.len() {
+            let token = &self.tokens[self.head];
             match token {
                 Token::Type(_) => {
+                    self.head += 1;
                     the_type = Some(Type::from_token(token.clone())?);
                 },
                 Token::Word(name) => {
-                    variable_list.push(Variable::BasicVar {
-                        name: name.clone(),
-                        pointer: pointer,
-                        restrict: restrict,
-                        array: None,
-                        value: value.clone(),
-                    });
+                    var_name = name.clone();
+                    self.head += 1;
                 },
                 Token::Star => {
+                    self.head += 1;
                     pointer += 1;
                 },
                 Token::Restrict => {
+                    self.head += 1;
                     if pointer != 0 {
                         return Err("Restrict can only be used with pointers".to_string());
                     }
                     restrict = true;
                 },
                 Token::Assignment => {
+                    self.head += 1;
                     value = Some(self.variable_value()?);
                 },
                 Token::Comma => {
+                    self.head += 1;
+                    variable_list.push(Variable::BasicVar {
+                        name: var_name.clone(),
+                        pointer: pointer,
+                        restrict: restrict,
+                        array: None,
+                        value: value.clone(),
+                    });
+                    pointer = 0;
+                    value = None;
+                    restrict = false;
+                    
+                    
                     let mut temp = self.variable_list()?;
                     variable_list.append(&mut temp); 
                 },
                 Token::SemiColon => {
+                    self.head += 1;
+                    variable_list.push(Variable::BasicVar {
+                        name: var_name.clone(),
+                        pointer: pointer,
+                        restrict: restrict,
+                        array: None,
+                        value: value.clone(),
+                    });
+                    pointer = 0;
+                    value = None;
+                    restrict = false;
                     return Ok(AstNode::VariableList(VariableList::BasicVars {type_: the_type.expect("no type"), variables: variable_list}));
                 },//TODO: add array
                 _ => {
@@ -314,7 +196,7 @@ impl Parser {
                 },
             }
         }
-        Ok(node)
+        Err("Unexpected end of file".to_string())
     }
 
 
@@ -330,7 +212,7 @@ impl Parser {
         let mut seen_open_paren = false;
         let mut seen_close_paren = false;
 
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             let token = &self.tokens[self.head];
             match token {
                 Token::Type(_) => {
@@ -338,6 +220,7 @@ impl Parser {
                     self.head += 1;
                 },
                 Token::LeftParen => {
+                    self.head += 1;
                     if seen_close_paren {
 
                         return Ok(AstNode::VariableList(VariableList::FunctionPointer(Variable::FunctionPointer {
@@ -351,7 +234,6 @@ impl Parser {
                     }
                     else {
                         seen_open_paren = true;
-                        self.head += 1;
                     }
                 },
                 Token::RightParen => {
@@ -359,7 +241,7 @@ impl Parser {
                     self.head += 1;
                 },
                 Token::Star => {
-                    if seen_open_paren {
+                    if seen_open_paren && seen_first_star {
                         return_pointer += 1;
                     }
                     else if seen_first_star {
@@ -371,6 +253,7 @@ impl Parser {
                     self.head += 1;
                 },
                 Token::Word(val) => {
+                    self.head += 1;
                     if seen_open_paren && seen_first_star {
                         name = Some(val.clone());
                     }
@@ -393,7 +276,7 @@ impl Parser {
         let mut node = AstNode::None;
         let mut word_seen = false;
 
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             match &self.tokens[self.head] {
                 Token::LeftParen => {
                     self.head = 0;
@@ -406,7 +289,7 @@ impl Parser {
                     break;
                 },
                 Token::Comma | Token::SemiColon | Token::Assignment => {
-                    self.head += 1;
+                    self.head = 0;
                     node = self.variable_dec()?;
                     break;
                 },
@@ -434,7 +317,7 @@ impl Parser {
         let mut num_periods = 0;
         let mut restrict = false;
         
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             let token = &self.tokens[self.head];
             match token {
                 Token::Type(_) => {
@@ -492,16 +375,18 @@ impl Parser {
                     self.head += 1;
                     if num_periods == 3 {
                         arguments.push(FunctionArgument::Ellipsis);
+                        self.head += 1;
                     }
-                    else if num_periods < 3 {
+                    else if num_periods < 3 && num_periods > 0 {
                         return Err("Too few periods in function argument".to_string());
                     }
-                    else if var_name.is_none() {
+                    else if var_name.is_none() && the_type.is_some() {
                         arguments.push(FunctionArgument::Type(the_type.expect("no type"), pointer));
                         the_type = None;
                         pointer = 0;
+                        self.head += 1;
                     }
-                    else {
+                    else if the_type.is_some() && var_name.is_some() {
                         arguments.push(FunctionArgument::Variable(the_type.expect("no type"),Variable::BasicVar {
                             name: var_name.expect("no name"),
                             array: None,
@@ -513,8 +398,8 @@ impl Parser {
                         the_type = None;
                         pointer = 0;
                         restrict = false;
+                        self.head += 1;
                     }
-                    self.head += 1;
                     return Ok(arguments);
                 },
                 Token::LeftParen => {
@@ -557,17 +442,20 @@ impl Parser {
         let mut inline = false;
         let mut static_ = false;
 
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             let token = &self.tokens[self.head];
+            println!("Function: {:?}", token);
             match token {
                 Token::Word(word) => {
                     name = Some(word.clone());
                     self.head += 1;
                 },
                 Token::LeftParen => {
+                    self.head += 1;
                     arguments = Some(self.function_arguments()?);
                 },
                 Token::LeftBrace => {
+                    self.head += 1;
                     let code_block = self.code_block()?;
 
                     return Ok(AstNode::Function(Function {
@@ -609,16 +497,16 @@ impl Parser {
                     return Err(format!("Unexpected token: {:?}", token));
                 },
             }
-            self.head += 1;
+            //self.head += 1;
         }
-        
-        unimplemented!();
+
+        return Err("Unexpected end of file".to_string());
     }
 
     fn code_block(&mut self) -> Result<CodeBlock, String> {
         let mut statements = Vec::new();
 
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             let token = &self.tokens[self.head];
             match token {
                 Token::RightBrace => {
@@ -672,13 +560,13 @@ impl Parser {
         let mut expression = None;
         let statement = None;
         
-        while self.tokens.len() != 0 {
+        while self.head < self.tokens.len() {
             let token = &self.tokens[self.head];
 
             match token {
                 Token::Return => {
                     self.head += 1;
-                    expression = Some(self.expression()?);
+                    expression = Some(self.expression(None)?);
                     requires_semicolon = true;
                 },
                 Token::Break => {
@@ -698,7 +586,7 @@ impl Parser {
                         },
                         _ => {
                             self.head -= 1;
-                            expression = Some(self.expression()?);
+                            expression = Some(self.expression(None)?);
                             requires_semicolon = true;
                         },
                     }
@@ -1017,7 +905,7 @@ impl Parser {
                 match self.tokens[self.head] {
                     Token::LeftBracket => {
                         let expr = self.expression(None)?;
-                        match self.tokens[self.head] {
+                        match &self.tokens[self.head] {
                             RightBracket => {
                                 self.head += 1;
                                 full_expression = Some(self.expression(Some(Expression::Binary(
@@ -1031,7 +919,7 @@ impl Parser {
                         }
                         
                     },
-                    Token::Add => {
+                    Token::Plus => {
                         self.head += 1;
                         full_expression = Some(Expression::Binary(
                             BinaryOperator::Add,
@@ -1277,25 +1165,43 @@ impl Parser {
                             Box::new(self.expression(None)?),));
 
                     },
-                    
-                    
-                    
+                    Token::Comma => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Binary(
+                            BinaryOperator::Comma,
+                            Box::new(expression),
+                            Box::new(self.expression(None)?),));
 
+                    },
+                    Token::QuestionMark => {
+                        self.head += 1;
+                        let expr = self.expression(None)?;
+                        match self.tokens[self.head] {
+                            Token::Colon => {
+                                self.head += 1;
+                                full_expression = Some(Expression::Ternary(
+                                    Box::new(expression),
+                                    Box::new(expr),
+                                    Box::new(self.expression(None)?),));
+                            },
+                            _ => {
+                                return Err("Expected colon".to_string());
+                            },
+                        }
 
-
+                    },
+                    _ => {
+                        full_expression = Some(Expression::Blank);
+                    },
                 }
-
-
-
-
                 return Ok(full_expression.unwrap());
             },
             None => {
-                match self.tokens[self.head] {
+                match self.tokens[self.head].clone() {
                     Token::Word(ident) => {//check for function call or typedef
                         self.head += 1;
 
-                        match self.tokens[self.head] {
+                        match self.tokens[self.head].clone() {
                             Token::LeftParen => {
                                 self.head += 1;
 
@@ -1322,7 +1228,7 @@ impl Parser {
                             },
                             Token::Period => {
                                 self.head += 1;
-                                let member = match self.tokens[self.head] {
+                                let member = match self.tokens[self.head].clone() {
                                     Token::Word(ident) => {
                                         self.head += 1;
                                         ident
@@ -1332,7 +1238,7 @@ impl Parser {
                                     },
                                 };
 
-                                match self.tokens[self.head] {
+                                match self.tokens[self.head].clone() {
                                     Token::LeftParen => {
                                         self.head += 1;
 
@@ -1349,7 +1255,7 @@ impl Parser {
                                         match self.tokens[self.head] {
                                             Token::RightParen => {
                                                 self.head += 1;
-                                                full_expression = Some(self.expression(Some(Expression::CallMethod(false, ident, member, arguments)))?);
+                                                full_expression = Some(self.expression(Some(Expression::CallMethod(false, ident, member.clone(), arguments)))?);
                                             },
                                             _ => {
                                                 return Err("Expected right parenthesis".to_string());
@@ -1362,14 +1268,14 @@ impl Parser {
                                         full_expression = Some(self.expression(Some(
                                             Expression::Binary(BinaryOperator::MemberAccess,
                                                 Box::new(Expression::Identifier(ident)),
-                                                Box::new(Expression::Identifier(member))
+                                                Box::new(Expression::Identifier(member.clone()))
                                             )))?);
                                     },
                                 }                                
                             },
                             Token::Arrow => {
                                 self.head += 1;
-                                let member = match self.tokens[self.head] {
+                                let member = match self.tokens[self.head].clone() {
                                     Token::Word(ident) => {
                                         self.head += 1;
                                         ident
@@ -1379,11 +1285,13 @@ impl Parser {
                                     },
                                 };
 
-                                match self.tokens[self.head] {
+                                match self.tokens[self.head].clone() {
                                     Token::LeftParen => {
                                         self.head += 1;
 
-                                        let arguments = match self.expression(None)? {
+                                        let temp = self.expression(None)?;
+                                        
+                                        let arguments = match temp {
                                             Expression::Blank => {
                                                 None
                                             },
@@ -1396,7 +1304,7 @@ impl Parser {
                                         match self.tokens[self.head] {
                                             Token::RightParen => {
                                                 self.head += 1;
-                                                full_expression = Some(self.expression(Some(Expression::CallMethod(true, ident, member, arguments)))?);
+                                                full_expression = Some(self.expression(Some(Expression::CallMethod(true, ident, member.clone(), arguments)))?);
                                             },
                                             _ => {
                                                 return Err("Expected right parenthesis".to_string());
@@ -1409,7 +1317,7 @@ impl Parser {
                                         full_expression = Some(self.expression(Some(
                                             Expression::Binary(BinaryOperator::PointerMemberAccess,
                                                 Box::new(Expression::Identifier(ident)),
-                                                Box::new(Expression::Identifier(member))
+                                                Box::new(Expression::Identifier(member.clone()))
                                             )))?);
                                     },
                                 }                                
@@ -1433,9 +1341,17 @@ impl Parser {
                         self.head += 1;
                         full_expression = Some(Expression::Literal(Literal::Char(character)));
                     },
+                    Token::True => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Literal(Literal::Bool(true)));
+                    },
+                    Token::False => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Literal(Literal::Bool(false)));
+                    },
                     Token::LeftParen => {//check for cast, compoundLiteral
                         self.head += 1;
-                        match self.tokens[self.head] {
+                        match &self.tokens[self.head] {
                             Token::Type(the_type) => {
                                 self.head += 1;
                                 match self.tokens[self.head] {
@@ -1444,7 +1360,7 @@ impl Parser {
                                         let pointer = match self.tokens[self.head] {
                                             Token::Star => {
                                                 self.head += 1;
-                                                let ptr = 1;
+                                                let mut ptr = 1;
                                                 while self.tokens[self.head] == Token::Star {
                                                     self.head += 1;
                                                     ptr += 1;
@@ -1456,7 +1372,7 @@ impl Parser {
                                             },
                                         };
                                         full_expression = Some(
-                                            Expression::Unary(UnaryOperator::Cast(Type::from_token(self.tokens[self.head - 1])?,
+                                            Expression::Unary(UnaryOperator::Cast(Type::from_token(self.tokens[self.head - 1].clone())?,
                                                                                   pointer),
                                                               Box::new(self.expression(None)?)));
                                     },
@@ -1521,25 +1437,18 @@ impl Parser {
                     },
                     Token::LeftBrace => {
                         self.head += 1;
-                        let mut initializers = Vec::new();
-                        let mut first = true;
-                        while self.tokens[self.head] != Token::RightBrace {
-                            if !first {
-                                match self.tokens[self.head] {
-                                    Token::Comma => {
-                                        self.head += 1;
-                                    },
-                                    _ => {
-                                        return Err("Expected comma".to_string());
-                                    },
-                                }
-                            }
-                            first = false;
-                            let initializer = self.initializer()?;
-                            initializers.push(initializer);
-                        }
-                        self.head += 1;
 
+                        let expr = self.expression(None)?;
+
+                        match self.tokens[self.head] {
+                            Token::RightBrace => {
+                                self.head += 1;
+                                full_expression = Some(Expression::InitializerList(Box::new(expr)));
+                            },
+                            _ => {
+                                return Err("Expected right brace".to_string());
+                            },
+                        }
                     },
                     _ => {
                         return Err(format!("Unexpected token {:?}", self.tokens[self.head]));
@@ -1549,34 +1458,82 @@ impl Parser {
 
                 return Ok(full_expression.unwrap());
             },
-
         }
-
     }
+
+    fn type_or_expression(&mut self) -> Result<TypeOrExpression, String> {
+        match self.tokens[self.head] {
+            Token::LeftParen => {
+                self.head += 1;
+                match self.tokens[self.head] {
+                    Token::Type(_) => {
+                        let type_ = Type::from_token(self.tokens[self.head].clone())?;
+                        self.head += 1;
+                        let mut pointer = 0;
+                        while self.tokens[self.head] == Token::Star {
+                            self.head += 1;
+                            pointer += 1;
+                        }
+
+                        match self.tokens[self.head] {
+                            Token::RightParen => {
+                                self.head += 1;
+                                return Ok(TypeOrExpression::Type(type_, pointer));
+                            },
+                            _ => {
+                                return Err("Expected right parenthesis".to_string());
+                            },
+                        }
+
+                    },
+                    _ => {
+                        return Err("Expected type".to_string());
+                    },
+                
+            }
+            },
+            _ => {
+                return Ok(TypeOrExpression::Expression(Box::new(self.expression(None)?)));
+            },
+            
+        }
+    }
+
 
     pub fn parse(&mut self) -> Result<Header, String> {
         let mut header_statements = Vec::new();
 
+        if self.tokens.len() == 0 {
+            return Err("No tokens".to_string());
+        }
+
         while self.tokens.len() != 0 {
+            println!("Parsing token {:?}", self.tokens[0]);
             match self.tokens[0] {
                 Token::Preprocessor(_) => {
                     header_statements.append(self.preprocessors()?.iter().map(|x| HeaderStatement::Preprocessor(x.clone())).collect::<Vec<HeaderStatement>>().as_mut());
 
                 },
                 Token::Typedef => {
+                    self.head += 1;
 
                 },
                 Token::Struct => {
+                    self.head += 1;
 
                 },
                 Token::Enum => {
+                    self.head += 1;
 
                 },
                 Token::Union => {
+                    self.head += 1;
 
                 },
                 Token::Type(_) => {//Variable, Function
+                    self.head += 1;
                     let node = self.variable_list_or_function()?;
+                    println!("Node: {:?}", node);
                     match node {
                         AstNode::VariableList(variable_list) => {
                             header_statements.push(HeaderStatement::Variable(variable_list));
@@ -1591,9 +1548,20 @@ impl Parser {
 
                 },
                 Token::Class => {
+                    self.head += 1;
 
                 },
                 Token::Static | Token::Inline => {
+                    self.head += 1;
+                    let node = self.variable_list_or_function()?;
+                    match node {
+                        AstNode::Function(function) => {
+                            header_statements.push(HeaderStatement::Function(function));
+                        },
+                        _ => {
+                            return Err(format!("Unexpected node: {:?}", node));
+                        },
+                    }
 
                 },
                 Token::Newline => {
@@ -1606,6 +1574,7 @@ impl Parser {
                 },
             }
             self.tokens = self.tokens[self.head..].to_vec();
+            self.head = 0;
         }
 
 
@@ -1638,7 +1607,7 @@ mod ast_tests {
 
         let mut parser = Parser::new(tokens);
         
-        assert!(parser.preprocessors().is_ok(), "Failed to parse preprocessor directive");
+        assert!(parser.parse().is_ok(), "Failed to parse preprocessor directive");
         //assert!(parser.consume_tokens(), "Failed to parse preprocessor directive");
     }
 
@@ -1674,7 +1643,7 @@ mod ast_tests {
 
         let mut parser = Parser::new(tokens);
 
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global variable");
+        assert!(parser.parse().is_ok(), "Failed to parse global variable");
     }
 
     #[test]
@@ -1691,7 +1660,7 @@ mod ast_tests {
 
         let mut parser = Parser::new(tokens);
 
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global variables");
+        assert!(parser.parse().is_ok(), "Failed to parse global variables");
     }
 
     #[test]
@@ -1705,9 +1674,10 @@ mod ast_tests {
                 return;
             }
         };
+        println!("Tokens: {:?}", tokens);
 
         let mut parser = Parser::new(tokens);
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global variable");
+        assert!(parser.parse().is_ok(), "Failed to parse global variable");
     }
 
     #[test]
@@ -1722,8 +1692,9 @@ mod ast_tests {
             }
         };
 
+        println!("Tokens: {:?}", tokens);
         let mut parser = Parser::new(tokens);
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global variable");
+        assert!(parser.parse().is_ok(), "Failed to parse global variable");
     }
 
     #[test]
@@ -1738,8 +1709,9 @@ mod ast_tests {
             }
         };
 
+        println!("Tokens: {:?}", tokens);
         let mut parser = Parser::new(tokens);
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global variable");
+        assert!(parser.parse().is_ok(), "Failed to parse global variable");
     }
 
     #[test]
@@ -1754,8 +1726,9 @@ mod ast_tests {
             }
         };
 
+        println!("Tokens: {:?}", tokens);
         let mut parser = Parser::new(tokens);
-        assert!(parser.variable_list_or_function().is_err(), "Parse global variable when it should have failed");
+        assert!(parser.parse().is_err(), "Parse global variable when it should have failed");
     }
 
     #[test]
@@ -1770,8 +1743,9 @@ mod ast_tests {
             },
         };
 
+        println!("Tokens: {:?}", tokens);
         let mut parser = Parser::new(tokens);
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global function pointer");
+        assert!(parser.parse().is_ok(), "Failed to parse global function pointer");
     }
 
     #[test]
@@ -1786,8 +1760,9 @@ mod ast_tests {
             },
         };
 
+        println!("Tokens: {:?}", tokens);
         let mut parser = Parser::new(tokens);
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global function pointer");
+        assert!(parser.parse().is_ok(), "Failed to parse global function pointer");
     }
 
     #[test]
@@ -1802,7 +1777,46 @@ mod ast_tests {
             },
         };
 
+        println!("Tokens: {:?}", tokens);
         let mut parser = Parser::new(tokens);
-        assert!(parser.variable_list_or_function().is_ok(), "Failed to parse global function pointer");
+        assert!(parser.parse().is_ok(), "Failed to parse global function pointer");
     }
+
+    #[test]
+    fn test_simple_function() {
+        let input = "int main() { return 0; }\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                assert!(false);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse simple function");
+    }
+
+    #[test]
+    fn test_simple_program() {
+        let input = "int main() { return 0; }\nint a;\nint b;\nint c;\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse simple program");
+    }
+
 }
