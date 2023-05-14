@@ -670,7 +670,7 @@ impl Parser {
 
         let mut requires_semicolon = false;
         let mut expression = None;
-        let mut statement = None;
+        let statement = None;
         
         while self.tokens.len() != 0 {
             let token = &self.tokens[self.head];
@@ -948,8 +948,6 @@ impl Parser {
 
 
         return Ok(Statement::Switch(expression, cases))
-
-
     }
     
 
@@ -1010,10 +1008,59 @@ impl Parser {
         }
     }
 
-    fn expression(&mut self) -> Result<Expression,String> {
-        unimplemented!();
-    }
+    fn expression(&mut self, expression: Option<Expression>) -> Result<Expression,String> {
 
+        let mut full_expression = None;
+
+        match expression {
+            Some(expression) => {
+                full_expression = Some(expression);
+            },
+            None => {
+                match self.tokens[self.head] {
+                    Token::Word(ident) => {//check for function call or typedef
+                        self.head += 1;
+                        full_expression = Some(Expression::Identifier(ident));
+                    },
+                    Token::Number(num) => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Literal(Literal::Number(num)));
+                    },
+                    Token::String(string) => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Literal(Literal::String(string)));
+                    },
+                    Token::Character(character) => {
+                        self.head += 1;
+                        full_expression = Some(Expression::Literal(Literal::Char(character)));
+                    },
+                    Token::LeftParen => {//check for cast, compoundLiteral
+                        self.head += 1;
+                        let expression = self.expression(None)?;
+                        match self.tokens[self.head] {
+                            Token::RightParen => {
+                                self.head += 1;
+                                full_expression = Some(expression);
+                            },
+                            _ => {
+                                return Err("Expected right parenthesis".to_string());
+                            },
+                        }
+                    },
+                    
+                    
+                    
+
+
+
+
+                }
+            },
+
+        }
+
+        return Err("Unexpected end of file".to_string());
+    }
 
     pub fn parse(&mut self) -> Result<Header, String> {
         let mut header_statements = Vec::new();
