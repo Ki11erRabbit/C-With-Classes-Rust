@@ -49,7 +49,6 @@ impl Parser {
                 Ok(VariableValue::String(data.clone()))
             },
             _ => {
-                self.head += 1;
                 Ok(VariableValue::Expression(self.expression(None)?))
             },
         }
@@ -275,11 +274,12 @@ impl Parser {
     fn variable_list_or_function(&mut self) -> Result<AstNode, String> {
         let mut node = AstNode::None;
         let mut word_seen = false;
+        let mut buffer = self.head;
+        self.head -= 1;
 
-        while self.head < self.tokens.len() {
-            match &self.tokens[self.head] {
+        while buffer < self.tokens.len() {
+            match &self.tokens[buffer] {
                 Token::LeftParen => {
-                    self.head = 0;
                     if !word_seen {
                         node = self.function_pointer_dec()?;
                     }
@@ -289,16 +289,15 @@ impl Parser {
                     break;
                 },
                 Token::Comma | Token::SemiColon | Token::Assignment => {
-                    self.head = 0;
                     node = self.variable_dec()?;
                     break;
                 },
                 Token::Star | Token::Restrict => {
-                    self.head += 1;
+                    buffer += 1;
                 },
                 Token::Word(_) => {
                     word_seen = true;
-                    self.head += 1;
+                    buffer += 1;
                 },//TODO: add array
                 _ => {
                     return Err(format!("Unexpected token: {:?}", self.tokens[self.head]));
@@ -522,6 +521,7 @@ impl Parser {
                     self.head += 1;
                 },
                 Token::Type(_) => {
+                    self.head += 1;
                     let node = self.variable_list_or_function()?;
                     match node {
                         AstNode::VariableList(variable_list) => {
@@ -546,6 +546,8 @@ impl Parser {
                     statements.push(statement);
                 },
                 _ => {
+                    let expression = self.expression(None)?;
+                    statements.push(Statement::Expression(expression));
                 },
             }
         }
@@ -1331,23 +1333,23 @@ impl Parser {
                     },
                     Token::Number(num) => {
                         self.head += 1;
-                        full_expression = Some(Expression::Literal(Literal::Number(num)));
+                        full_expression = Some(self.expression(Some(Expression::Literal(Literal::Number(num))))?);
                     },
                     Token::String(string) => {
                         self.head += 1;
-                        full_expression = Some(Expression::Literal(Literal::String(string)));
+                        full_expression = Some(self.expression(Some(Expression::Literal(Literal::String(string))))?);
                     },
                     Token::Character(character) => {
                         self.head += 1;
-                        full_expression = Some(Expression::Literal(Literal::Char(character)));
+                        full_expression = Some(self.expression(Some(Expression::Literal(Literal::Char(character))))?);
                     },
                     Token::True => {
                         self.head += 1;
-                        full_expression = Some(Expression::Literal(Literal::Bool(true)));
+                        full_expression = Some(self.expression(Some(Expression::Literal(Literal::Bool(true))))?);
                     },
                     Token::False => {
                         self.head += 1;
-                        full_expression = Some(Expression::Literal(Literal::Bool(false)));
+                        full_expression = Some(self.expression(Some(Expression::Literal(Literal::Bool(false))))?);
                     },
                     Token::LeftParen => {//check for cast, compoundLiteral
                         self.head += 1;
@@ -1817,6 +1819,131 @@ mod ast_tests {
         let result = parser.parse();
         println!("Result: {:?}", result);
         assert!(result.is_ok(), "Failed to parse simple program");
+    }
+
+    /*#[test]
+    fn test_hello_world_program() {
+        let input = "#include <stdio.h>\nint main() { printf(\"Hello World\"); return 0; }\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse hello world program");
+}*/
+    #[test]
+    fn test_math_program() {
+        let input = "int main() { return 1 + 2 * 3; }\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse math program");
+    }
+
+    #[test]
+    fn test_nested_expressions() {
+        let input = "int main() { return 1 + (2 * 3); }\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse nested expressions");
+    }
+
+    #[test]
+    fn test_variables_in_function() {
+        let input = "int main() { int a; int b; int c; return 0; }\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse variables in function");
+    }
+
+    #[test]
+    fn test_global_var_assignment() {
+        let input = "int a = 0;\nint b = 1;\nint c = 2;\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse global variable assignment");
+    }
+
+    #[test]
+    fn test_global_var_assignment_with_expr() {
+        let input = "int a = 0 + 1;\nint b = 1 + 2;\nint c = 2 + 3;\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+        
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse global variable assignment with expression");
+    }
+
+    #[test]
+    fn test_struct_access() {
+        let input = "struct foo { int a; int b; int c; };\nint main() { struct foo f; f.a = 0; f.b = 1; f.c = 2; return 0; }\n";
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+        
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse struct access");
     }
 
 }

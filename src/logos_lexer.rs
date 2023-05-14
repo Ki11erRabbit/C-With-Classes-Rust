@@ -18,7 +18,7 @@ pub enum TokenPreparse<'input> {
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice())]
     Word(&'input str),
 
-    #[regex("[0-9]*[.]?[0-9]*([eE]-[^0][0-9]+[uUlL]?[lL]?[lL]?)?|0[xX][0-9a-fA-F]+[uUlL]?[lL]?[lL]?|[^0][0-9]+[uUlL]?[lL]?[lL]?|0[0-7]+", |lex| lex.slice())]
+    #[regex("[0-9]*[.]?[0-9]*([eE]-[^0][0-9]+[uUlL]?[lL]?[lL]?)?|0[xX][0-9a-fA-F]+[uUlL]?[lL]?[lL]?|[0-9]+[uUlL]?[lL]?[lL]?|0[0-7]+", |lex| lex.slice())]
     Number(&'input str),
 
     //#[regex("\"[^\"]*\"", |lex| lex.slice())]
