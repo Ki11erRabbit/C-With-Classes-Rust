@@ -396,9 +396,8 @@ impl Parser {
         while self.tokens.len() != 0 {
             match &self.tokens[self.head] {
                 Token::LeftParen => {
-                    self.head += 1;
+                    self.head = 0;
                     if !word_seen {
-                        self.head = 0;
                         node = self.function_pointer_dec()?;
                     }
                     else {
@@ -439,27 +438,33 @@ impl Parser {
             let token = &self.tokens[self.head];
             match token {
                 Token::Type(_) => {
+                    self.head += 1;
                     the_type = Some(Type::from_token(token.clone())?);
                 },
                 Token::Word(name) => {
+                    self.head += 1;
                     var_name = Some(name.clone());
                 },
                 Token::Star => {
+                    self.head += 1;
                     pointer += 1;
                 },
                 Token::Period => {
+                    self.head += 1;
                     num_periods += 1;
                     if num_periods > 3 {
                         return Err("Too many periods in function argument".to_string());
                     }
                 },
                 Token::Restrict => {
+                    self.head += 1;
                     if pointer != 0 {
                         return Err("Restrict can only be used with pointers".to_string());
                     }
                     restrict = true;
                 },
                 Token::Comma => {
+                    self.head += 1;
                     if num_periods != 0 {
                         return Err("Ellipsis in wrong spot.".to_string());
                     }
@@ -484,6 +489,7 @@ impl Parser {
 
                 },
                 Token::RightParen => {
+                    self.head += 1;
                     if num_periods == 3 {
                         arguments.push(FunctionArgument::Ellipsis);
                     }
@@ -544,7 +550,464 @@ impl Parser {
     }
 
     fn function(&mut self) -> Result<AstNode, String> {
+        let mut name = None;
+        let mut arguments = None;
+        let mut return_type = None;
+        let mut return_pointer = 0;
+        let mut inline = false;
+        let mut static_ = false;
+
+        while self.tokens.len() != 0 {
+            let token = &self.tokens[self.head];
+            match token {
+                Token::Word(word) => {
+                    name = Some(word.clone());
+                    self.head += 1;
+                },
+                Token::LeftParen => {
+                    arguments = Some(self.function_arguments()?);
+                },
+                Token::LeftBrace => {
+                    let code_block = self.code_block()?;
+
+                    return Ok(AstNode::Function(Function {
+                        name: name.expect("no name"),
+                        arguments: arguments.expect("no arguments"),
+                        return_type: return_type.expect("no return type"),
+                        return_pointer: return_pointer,
+                        body: code_block,
+                        inline: inline,
+                        static_: static_,
+                    }));
+                },
+                Token::Star => {
+                    self.head += 1;
+                    return_pointer += 1;
+                },
+                Token::Type(_) => {
+                    self.head += 1;
+                    return_type = Some(Type::from_token(token.clone())?);
+                },
+                Token::Inline => {
+                    self.head += 1;
+                    inline = true;
+                },
+                Token::Static => {
+                    self.head += 1;
+                    static_ = true;
+                },
+                Token::SemiColon => {
+                    self.head += 1;
+                    return Ok(AstNode::FunctionPrototype(FunctionPrototype {
+                        name: name.expect("no name"),
+                        arguments: arguments.expect("no arguments"),
+                        return_type: return_type.expect("no return type"),
+                        return_pointer: return_pointer,
+                    }));
+                }
+                _ => {
+                    return Err(format!("Unexpected token: {:?}", token));
+                },
+            }
+            self.head += 1;
+        }
+        
         unimplemented!();
+    }
+
+    fn code_block(&mut self) -> Result<CodeBlock, String> {
+        let mut statements = Vec::new();
+
+        while self.tokens.len() != 0 {
+            let token = &self.tokens[self.head];
+            match token {
+                Token::RightBrace => {
+                    self.head += 1;
+                    return Ok(CodeBlock::Code(StatementList {statements}));
+                },
+                Token::Preprocessor(_) => {
+                    self.head += 1;
+                    statements.append(self.preprocessors()?.iter().map(|x| Statement::Preprocessor(x.clone())).collect::<Vec<Statement>>().as_mut());
+                },
+                Token::Comment(value) => {
+                    statements.push(Statement::Comment(value.clone()));
+                    self.head += 1;
+                },
+                Token::Type(_) => {
+                    let node = self.variable_list_or_function()?;
+                    match node {
+                        AstNode::VariableList(variable_list) => {
+                            statements.push(Statement::VariableList(variable_list));
+                        },
+                        AstNode::Function(_) => {
+                            return Err("Functions cannot be declared inside of a code block".to_string());
+                        },
+                        _ => {
+                            return Err("Expected variable list or function".to_string());
+                        },
+                    }
+                },
+                Token::LeftBrace => {
+                    let code_block = self.code_block()?;
+                    statements.push(Statement::Block(Box::new(code_block)));
+                },
+                Token::Return | Token::If | Token::Else | Token::While | Token::For |
+                Token::Do | Token::Switch | Token::Case | Token::Default | Token::Break |
+                Token::Continue | Token::Goto | Token::SemiColon => {
+                    let statement = self.statement()?;
+                    statements.push(statement);
+                },
+                _ => {
+                },
+            }
+        }
+
+        Err("Unexpected end of file".to_string())
+        
+    }
+
+    fn statement(&mut self) -> Result<Statement,String> {
+
+        let mut requires_semicolon = false;
+        let mut expression = None;
+        let mut statement = None;
+        
+        while self.tokens.len() != 0 {
+            let token = &self.tokens[self.head];
+
+            match token {
+                Token::Return => {
+                    self.head += 1;
+                    expression = Some(self.expression()?);
+                    requires_semicolon = true;
+                },
+                Token::Break => {
+                    self.head += 1;
+                    requires_semicolon = true;
+                },
+                Token::Continue => {
+                    self.head += 1;
+                    requires_semicolon = true;
+                },
+                Token::Word(word) => {
+                    self.head += 1;
+                    match &self.tokens[self.head] {
+                        Token::Colon => {
+                            self.head += 1;
+                            return Ok(Statement::Label(word.clone()));
+                        },
+                        _ => {
+                            self.head -= 1;
+                            expression = Some(self.expression()?);
+                            requires_semicolon = true;
+                        },
+                    }
+                },
+                Token::SemiColon => {
+                    self.head += 1;
+                    if statement.is_some() {
+                        return Ok(statement.expect("no statement"));
+                    } else {
+                        return Ok(Statement::Expression(expression.expect("no expression")));
+                    }
+                    
+                },
+                Token::If => {
+                    self.head += 1;
+                    let statement = self.statement_if()?;
+                    return Ok(statement);
+                },
+                Token::Else => {
+                    self.head += 1;
+                    let block_or_statement = self.block_or_statement()?;
+                    return Ok(Statement::Else(Box::new(block_or_statement)));
+                },
+                Token::While => {
+                    self.head += 1;
+                    let statement = self.statement_while()?;
+                    return Ok(statement);
+                },
+                Token::For => {
+                    self.head += 1;
+                    let statement = self.statement_for()?;
+                    return Ok(statement);
+                },
+                Token::Do => {
+                    self.head += 1;
+                    let statement = self.statement_do()?;
+                    return Ok(statement);
+                },
+                Token::Switch => {
+                    self.head += 1;
+                    let statement = self.statement_switch()?;
+                    return Ok(statement);
+                },
+                Token::Goto => {
+                    self.head += 1;
+                    match &self.tokens[self.head] {
+                        Token::Word(word) => {
+                            self.head += 1;
+                            match self.tokens[self.head] {
+                                Token::SemiColon => {
+                                    self.head += 1;
+                                    return Ok(Statement::Goto(word.clone()));
+                                },
+                                _ => {
+                                    return Err("Expected semicolon".to_string());
+                                },
+                            }
+                        },
+                        _ => {
+                            return Err("Expected label".to_string());
+                        },
+                    }
+
+                },
+                _ => {
+                    expression = Some(self.expression()?);
+                    requires_semicolon = true;
+                },
+                
+
+            }
+            
+
+        }
+
+        if requires_semicolon {
+            return Err("Expected semicolon".to_string());
+        }
+
+        return Ok(Statement::Expression(expression.expect("no expression")));
+
+    }
+    fn statement_if(&mut self) -> Result<Statement,String> {
+        let expression = self.conditional_expression()?;
+        let block_or_statement = self.block_or_statement()?;
+
+        return Ok(Statement::If(expression, Box::new(block_or_statement)));
+    }
+
+    fn statement_else(&mut self) -> Result<Statement,String> {
+        let block_or_statement = self.block_or_statement()?;
+
+        return Ok(Statement::Else(Box::new(block_or_statement)));
+    }
+
+    fn statement_while(&mut self) -> Result<Statement,String> {
+        let expression = self.conditional_expression()?;
+        let block_or_statement = self.block_or_statement()?;
+
+        return Ok(Statement::While(expression, Box::new(block_or_statement)));
+    }
+
+    fn statement_do(&mut self) -> Result<Statement,String> {
+        let block_or_statement = self.block_or_statement()?;
+        match self.tokens[self.head] {
+            Token::While => {
+                self.head += 1;
+                let expression = self.conditional_expression()?;
+                match self.tokens[self.head] {
+                    Token::SemiColon => {
+                        self.head += 1;
+                        return Ok(Statement::DoWhile(expression,Box::new(block_or_statement)));
+                    },
+                    _ => {
+                        return Err("Expected semicolon".to_string());
+                    },
+                }
+            },
+            _ => {
+                return Err("Expected while".to_string());
+            },
+        }
+    }
+
+    fn statement_for(&mut self) -> Result<Statement,String> {
+        match self.tokens[self.head] {
+            Token::LeftParen => {
+                self.head += 1;
+            },
+            _ => {
+                return Err("Expected left parenthesis".to_string());
+            },
+        }
+        let mut found_first = false;
+        let variable_list_or_statement = match self.tokens[self.head] {
+            Token::SemiColon => {
+                self.head += 1;
+                None
+            },
+            _ => {
+                found_first = true;
+                Some(Box::new(self.variable_list_or_statement()?))
+            },
+        };
+        if found_first {
+            match self.tokens[self.head] {
+                Token::SemiColon => {
+                    self.head += 1;
+                },
+                _ => {
+                    return Err("Expected semicolon".to_string());
+                },
+            }
+        }
+
+        let mut found_second = false;
+        let expression1 = match self.tokens[self.head] {
+            Token::SemiColon => {
+                self.head += 1;
+                None
+            },
+            _ => {
+                found_second = true;
+                Some(self.expression()?)
+            },
+        };
+        if found_second {
+            match self.tokens[self.head] {
+                Token::SemiColon => {
+                    self.head += 1;
+                },
+                _ => {
+                    return Err("Expected semicolon".to_string());
+                },
+            }
+        }
+
+        let mut found_third = false;
+        let expression2 = match self.tokens[self.head] {
+            Token::RightParen => {
+                self.head += 1;
+                None
+            },
+            _ => {
+                found_third = true;
+                Some(self.expression()?)
+            },
+        };
+        if found_third {
+            match self.tokens[self.head] {
+                Token::RightParen => {
+                    self.head += 1;
+                },
+                _ => {
+                    return Err("Expected right parenthesis".to_string());
+                },
+            }
+        }
+        
+        let block_or_statement = self.block_or_statement()?;
+
+        return Ok(Statement::For(variable_list_or_statement, expression1, expression2, Box::new(block_or_statement)));
+    }
+
+    fn statement_switch(&mut self) -> Result<Statement, String> {
+        let expression = self.conditional_expression()?;
+        let mut cases = Vec::new();
+
+        while self.head < self.tokens.len() {
+            match self.tokens[self.head] {
+                Token::Case => {
+                    self.head += 1;
+                    let expression = self.conditional_expression()?;
+                    match self.tokens[self.head] {
+                        Token::Colon => {
+                            self.head += 1;
+                            let block_or_statement = self.block_or_statement()?;
+                            cases.push(SwitchCase {default: false, expression: Some(expression), body: Box::new(block_or_statement)});
+                        },
+                        _ => {
+                            return Err("Expected colon".to_string());
+                        },
+                    }
+                },
+                Token::Default => {
+                    self.head += 1;
+                    match self.tokens[self.head] {
+                        Token::Colon => {
+                            self.head += 1;
+                            let block_or_statement = self.block_or_statement()?;
+                            cases.push(SwitchCase {default: true, expression: None, body: Box::new(block_or_statement)});
+                        },
+                        _ => {
+                            return Err("Expected colon".to_string());
+                        },
+                    }
+                },
+                Token::RightBrace => {
+                    self.head += 1;
+                    return Ok(Statement::Switch(expression, cases));
+                },
+                _ => {
+                    return Err("Expected case or default".to_string());
+                },
+            }
+        }
+
+
+        return Ok(Statement::Switch(expression, cases))
+
+
+    }
+    
+
+    fn conditional_expression(&mut self) -> Result<Expression,String> {
+        match self.tokens[self.head] {
+            Token::LeftParen => {
+                self.head += 1;
+                let expression = self.expression()?;
+                match self.tokens[self.head] {
+                    Token::RightParen => {
+                        self.head += 1;
+                        return Ok(expression);
+                    },
+                    _ => {
+                        return Err("Expected right parenthesis".to_string());
+                    },
+                }
+            },
+            _ => {
+                return Err("Expected left parenthesis".to_string());
+            },
+        }
+    }
+
+    fn block_or_statement(&mut self) -> Result<BlockOrStatement,String> {
+        match self.tokens[self.head] {
+            Token::LeftBrace => {
+                self.head += 1;
+                let code_block = self.code_block()?;
+                return Ok(BlockOrStatement::Block(code_block));
+            },
+            _ => {
+                let statement = self.statement()?;
+                return Ok(BlockOrStatement::Statement(statement));
+            },
+        }
+    }
+
+    fn variable_list_or_statement(&mut self) -> Result<VariableListOrStatement,String> {
+        match self.tokens[self.head] {
+            Token::Type(_) => {
+                let variable_list = self.variable_list_or_function()?;
+
+                match variable_list {
+                    AstNode::VariableList(variable_list) => {
+                        return Ok(VariableListOrStatement::VariableList(variable_list));
+                    },
+                    _ => {
+                        return Err("Expected variable list".to_string());
+                    },
+                }
+                
+            },//todo: add in structs, unions, enums, etc
+            _ => {
+                let statement = self.statement()?;
+                return Ok(VariableListOrStatement::Statement(statement));
+            },
+        }
     }
 
     fn expression(&mut self) -> Result<Expression,String> {

@@ -168,7 +168,8 @@ pub enum FunctionArgument {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionPrototype {
-    pub return_type: String,
+    pub return_type: Type,
+    pub return_pointer: usize,
     pub name: String,
     pub arguments: Vec<FunctionArgument>,
 }
@@ -177,7 +178,8 @@ pub struct FunctionPrototype {
 pub struct Function {
     pub inline: bool,
     pub static_: bool,
-    pub return_type: (Type,TypeModifier),
+    pub return_type: Type,
+    pub return_pointer: usize,
     pub name: String,
     pub arguments: Vec<FunctionArgument>,
     pub body: CodeBlock,
@@ -317,7 +319,7 @@ pub struct StatementList {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlockOrStatement {
     Block(CodeBlock),
-    Expression(Statement),
+    Statement(Statement),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -335,10 +337,11 @@ pub struct TypeOrExpression {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Preprocessor(Preprocessor),
-    VariableList(Vec<VariableList>),
+    Comment(String),
+    VariableList(VariableList),
     Expression(Expression),
     Return(Expression),
-    If(Expression, Box<BlockOrStatement>, Option<Box<Statement>>),
+    If(Expression, Box<BlockOrStatement>),
     Else(Box<BlockOrStatement>),
     While(Expression, Box<BlockOrStatement>),
     DoWhile(Expression, Box<BlockOrStatement>),
@@ -360,7 +363,7 @@ pub enum Statement {
 pub struct SwitchCase {
     pub default: bool,
     pub expression: Option<Expression>,
-    pub body: Vec<Statement>,
+    pub body: Box<BlockOrStatement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
