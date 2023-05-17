@@ -544,7 +544,7 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         continue;
                     },
                     ParserState::InPreprocessor(mut string, preproc_state) => {
-                        string.push('\n');
+                        string.push_str("\r\n");
                         
                         match preproc_state {
                             PreprocessorState::InDefine(false) => {
