@@ -208,7 +208,7 @@ pub enum TokenPreparse<'input> {
     Bool,
     #[token("complex")]
     Complex,
-    #[token("_Generic")]
+    #[token("generic")]
     Generic,
     #[token("imaginary")]
     Imaginary,
@@ -234,6 +234,10 @@ pub enum TokenPreparse<'input> {
     
     #[token("tagged")]
     Tagged,
+    #[token("abstract")]
+    Abstract,
+    #[token("operator")]
+    Operator,
     #[token("private")]
     Private,
     #[token("class")]
@@ -354,6 +358,8 @@ pub enum Token {
     TypeofUnqual,
 
     Tagged,
+    Abstract,
+    Operator,
     Private,
     Class,
 }
@@ -454,6 +460,8 @@ impl fmt::Display for Token {
             Token::Private => write!(f, "private"),
             Token::Class => write!(f, "class"),
             Token::Tagged => write!(f, "tagged"),
+            Token::Abstract => write!(f, "abstract"),
+            Token::Operator => write!(f, "operator"),
         }
     }
 
@@ -2551,12 +2559,12 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                         continue;
                     },
                     ParserState::InPreprocessor(mut string,preproc_state) => {
-                        string.push_str("_Generic");
+                        string.push_str("generic");
                         state = ParserState::InPreprocessor(string,preproc_state);
                         continue;
                     },
                     ParserState::InString(mut string,_) => {
-                        string.push_str("_Generic");
+                        string.push_str("generic");
                         state = ParserState::InString(string,false);
                         continue;
                     },
@@ -2896,6 +2904,45 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     },
                     _ => {},
                 }
+            },
+            TokenPreparse::Abstract => {
+                match state {
+                    ParserState::Normal => {
+                        tokens.push(Token::Abstract);
+                        continue;
+                    },
+                    ParserState::InPreprocessor(mut string,preproc_state) => {
+                        string.push_str("abstract");
+                        state = ParserState::InPreprocessor(string,preproc_state);
+                        continue;
+                    },
+                    ParserState::InString(mut string,_) => {
+                        string.push_str("abstract");
+                        state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    _ => {},
+                }
+            },
+            TokenPreparse::Operator => {
+                match state {
+                    ParserState::Normal => {
+                        tokens.push(Token::Operator);
+                        continue;
+                    },
+                    ParserState::InPreprocessor(mut string,preproc_state) => {
+                        string.push_str("operator");
+                        state = ParserState::InPreprocessor(string,preproc_state);
+                        continue;
+                    },
+                    ParserState::InString(mut string,_) => {
+                        string.push_str("operator");
+                        state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    _ => {},
+                }
+
             },
             _ => return Err(LexerError::UnrecognizedToken(format!("{:?}",token))),
         }

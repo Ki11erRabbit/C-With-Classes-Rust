@@ -149,8 +149,11 @@ impl Parser {
                     restrict = false;
                     self.head += 1;
                 },
+                Token::LeftBracket => {
+                    array = Some(self.variable_array()?);
+                },
                 _ => {
-                    return Err(format!("Unexpected token: {:?}", self.tokens[self.head]));
+                    return Err(format!("Unexpected token in var list: {:?}", self.tokens[self.head]));
                 },
             }
         }
@@ -169,6 +172,8 @@ impl Parser {
         let mut value = None;
         let mut restrict = false;
         let mut variable_list = Vec::new();
+        let mut array = None;
+        let mut generic = false;
         
         
         while self.head < self.tokens.len() {
@@ -188,7 +193,12 @@ impl Parser {
                         the_type = Some(Type::from_token(self.tokens[start].clone())?);
                     }
                     else {
-                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                        if generic {
+                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                        }
+                        else {
+                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                        }
                         var_name = name.clone();
                     }
                     self.head += 1;
@@ -198,7 +208,12 @@ impl Parser {
                         the_type = Some(Type::from_token(self.tokens[start].clone())?);
                     }
                     else {
-                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                        if generic {
+                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                        }
+                        else {
+                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                        }
                     }
                     self.head += 1;
                     pointer += 1;
@@ -220,12 +235,13 @@ impl Parser {
                         name: var_name.clone(),
                         pointer: pointer,
                         restrict: restrict,
-                        array: None,
+                        array: array,
                         value: value.clone(),
                     });
                     pointer = 0;
                     value = None;
                     restrict = false;
+                    array = None;
                     
                     
                     let mut temp = self.variable_list()?;
@@ -237,26 +253,65 @@ impl Parser {
                         name: var_name.clone(),
                         pointer: pointer,
                         restrict: restrict,
-                        array: None,
+                        array: array,
                         value: value.clone(),
                     });
                     pointer = 0;
                     value = None;
                     restrict = false;
-                    return Ok(AstNode::VariableList(VariableList::BasicVars {type_: the_type.expect("no type"), variables: variable_list}));
-                },//TODO: add array
+                    array = None;
+                    return Ok(AstNode::VariableList(VariableList::BasicVars {
+                        type_: the_type.expect("no type"),
+                        variables: variable_list,
+                        generic: generic,
+                    }));
+                },
+                Token::LeftBracket => {
+                    array = Some(self.variable_array()?);
+
+                },
                 Token::Struct | Token::Enum | Token::Union | Token::Tagged => {
                     self.head += 1;
                     struct_enum_union = true;
                 },
+                Token::Generic => {
+                    generic = true;
+                    type_pos = self.head;
+                    self.head += 1;
+                },
                 _ => {
-                    return Err(format!("Unexpected token: {:?}", token));
+                    return Err(format!("Unexpected token in var dec: {:?}", token));
                 },
             }
         }
-        Err("Unexpected end of file".to_string())
+        Err("Unexpected end of file in var dec".to_string())
     }
 
+    fn variable_array(&mut self) -> Result<Vec<VariableArray>,String> {
+        let mut array = Vec::new();
+        self.head += 1;
+        while self.tokens[self.head] == Token::LeftBracket ||(
+            self.tokens[self.head] != Token::SemiColon &&
+                self.tokens[self.head] != Token::Comma &&
+                self.tokens[self.head] != Token::Assignment) {
+            match self.tokens[self.head] {
+                Token::RightBracket => {
+                    self.head += 1;
+                    array.push(VariableArray::NoSize);
+                },
+                Token::LeftBracket => {
+                    self.head += 1;
+                },
+                _ => {
+                    array.push(VariableArray::Size(self.expression(None)?));
+                    self.head += 1;
+                },
+            }
+        }
+
+        Ok(array)
+            
+    }
 
     fn function_pointer_dec(&mut self) -> Result<AstNode, String> {
 
@@ -319,8 +374,11 @@ impl Parser {
                         return Err("Malformed function pointer declaration".to_string());
                     }
                 },//TODO: add array
+                Token::LeftBracket => {
+                    array = Some(self.variable_array()?);
+                },
                 _ => {
-                    return Err(format!("Unexpected token: {:?}", token));
+                    return Err(format!("Unexpected token in function pointer: {:?}", token));
                 },
 
             }
@@ -358,8 +416,15 @@ impl Parser {
                     word_seen = true;
                     buffer += 1;
                 },//TODO: add array
+                Token::LeftBracket => {
+                    node = self.variable_dec()?;
+                    break;
+                },
+                Token::Generic => {
+                    buffer += 1;
+                },
                 _ => {
-                    return Err(format!("Unexpected token: {:?}", self.tokens[buffer]));
+                    return Err(format!("Unexpected token in var list or func: {:?}", self.tokens[buffer]));
                 },
             }
         }
@@ -482,7 +547,7 @@ impl Parser {
                     
                 },
                 _ => {
-                    return Err(format!("Unexpected token: {:?}", token));
+                    return Err(format!("Unexpected token in function arguments: {:?}", token));
                 },
 
             }
@@ -499,6 +564,7 @@ impl Parser {
         let mut return_pointer = 0;
         let mut inline = false;
         let mut static_ = false;
+        let mut generic = false;
 
         while self.head < self.tokens.len() {
             let token = &self.tokens[self.head];
@@ -524,6 +590,7 @@ impl Parser {
                         body: code_block,
                         inline: inline,
                         static_: static_,
+                        generic: generic,
                     }));
                 },
                 Token::Star => {
@@ -550,9 +617,13 @@ impl Parser {
                         return_type: return_type.expect("no return type"),
                         return_pointer: return_pointer,
                     }));
-                }
+                },
+                Token::Generic => {
+                    self.head += 1;
+                    generic = true;
+                },
                 _ => {
-                    return Err(format!("Unexpected token: {:?}", token));
+                    return Err(format!("Unexpected token in function: {:?}", token));
                 },
             }
             //self.head += 1;
@@ -619,7 +690,7 @@ impl Parser {
             }
         }
 
-        Err("Unexpected end of file".to_string())
+        Err("Unexpected end of file in code block".to_string())
         
     }
 
@@ -1465,7 +1536,7 @@ impl Parser {
                         }
                     },
                     _ => {
-                        return Err(format!("Unexpected token {:?}", self.tokens[self.head]));
+                        return Err(format!("Unexpected token in expression: {:?}", self.tokens[self.head]));
                     },
                     
                 }
@@ -1849,6 +1920,237 @@ impl Parser {
         Err("Unexpected end of file".to_string())
     }
 
+    pub fn class(&mut self) -> Result<Class, String> {
+        let mut abstract_ = false;
+        let mut generic = None;
+        let mut parent = None;
+        let mut name = None;
+        let mut members = Vec::new();
+
+
+        while self.head < self.tokens.len() {
+            match &self.tokens[self.head] {
+                Token::Class => {
+                    self.head += 1;
+                },
+                Token::Abstract => {
+                    abstract_ = true;
+                    self.head += 1;
+                },
+                /*Token::LessThan => {
+                    self.head += 1;
+                    match &self.tokens[self.head] {
+                        Token::Word(val) => {
+                            generic = Some(val.clone());
+                            self.head += 1;
+                        },
+                        _ => {
+                            return Err("Expected identifier".to_string());
+                        },
+                    }
+                    match &self.tokens[self.head] {
+                        Token::GreaterThan => {
+                            self.head += 1;
+                        },
+                        _ => {
+                            return Err("Expected >".to_string());
+                        },
+                    }
+                },*/
+                Token::Colon => {
+                    self.head += 1;
+                    match &self.tokens[self.head] {
+                        Token::Word(val) => {
+                            parent = Some(val.clone());
+                            self.head += 1;
+                        },
+                        _ => {
+                            return Err("Expected identifier".to_string());
+                        },
+                    }
+                },
+                Token::Word(val) => {
+                    name = Some(val.clone());
+                    self.head += 1;
+                },
+                Token::LeftBrace => {
+                    self.head += 1;
+                    while self.tokens[self.head] != Token::RightBrace {
+                        members.push(self.class_member(abstract_)?);
+                    }
+                    match &self.tokens[self.head] {
+                        Token::RightBrace => {
+                            self.head += 1;
+                            return Ok(Class {abstract_, generic, parent, name: name.unwrap(), members});
+                        },
+                        _ => {
+                            return Err("Expected }".to_string());
+                        },
+                    }
+                },
+                _ => {
+                    return Err("Expected identifier or left brace".to_string());
+                },
+            }
+
+        }
+        Err("Unexpected end of file in Class".to_string())
+    }
+
+    fn class_member(&mut self, abstract_: bool) -> Result<ClassMember,String> {
+        let mut word_seen = false;
+        let mut buffer = self.head;
+        self.head -= 1;
+
+        while buffer < self.tokens.len() {
+            match &self.tokens[buffer] {
+                Token::LeftParen => {
+                    if !word_seen {
+                        match self.function_pointer_dec()? {
+                            AstNode::VariableList(val) => {
+                                return Ok(ClassMember::Variable(val));
+                            },
+                            _ => {
+                                return Err("Expected variable list".to_string());
+                            },
+                        }
+                    }
+                    else {
+                        match self.function()? {
+                            AstNode::Function(val) => {
+                                return Ok(ClassMember::Method(Method::Normal((val))));
+                            },
+                            AstNode::FunctionPrototype(val) => {
+                                return Ok(ClassMember::Method(Method::Abstract((val))));
+                            },
+                            _ => {
+                                return Err("Expected function".to_string());
+                            },
+                        }
+                    }
+                },
+                Token::Comma | Token::SemiColon | Token::Assignment => {
+                    match self.variable_dec()? {
+                        AstNode::VariableList(val) => {
+                            return Ok(ClassMember::Variable(val));
+                        },
+                        _ => {
+                            return Err("Expected variable list".to_string());
+                        },
+                    }
+                },
+                Token::Star | Token::Restrict => {
+                    buffer += 1;
+                },
+                Token::Word(_) => {
+                    word_seen = true;
+                    buffer += 1;
+                },
+                Token::LeftBracket => {
+                    match self.variable_dec()? {
+                        AstNode::VariableList(val) => {
+                            return Ok(ClassMember::Variable(val));
+                        },
+                        _ => {
+                            return Err("Expected variable list".to_string());
+                        },
+                    }
+                },
+                Token::Operator => {
+                    return Ok(ClassMember::OperatorOverload(self.operator()?));
+
+                },
+                _ => {
+                    return Err(format!("Unexpected token in class member: {:?}", self.tokens[buffer]));
+                },
+            }
+        }
+        Err("Unexpected end of file in class member".to_string())
+    }
+
+    fn operator(&mut self) -> Result<OperatorOverload,String> {
+        let mut name = None;
+        let mut arguments = None;
+        let mut return_type = None;
+        let mut return_pointer = 0;
+
+        while self.head < self.tokens.len() {
+            let token = &self.tokens[self.head];
+            match token {
+                Token::LeftParen => {
+                    self.head += 1;
+
+                    name = match &self.tokens[self.head] {
+                        Token::Plus | Token::Minus | Token::Star | Token::Divide |
+                        Token::Modulo | Token::BitwiseAnd | Token::BitwiseOr |
+                        Token::BitwiseXor | Token::BitwiseNot | Token::BitwiseLeftShift |
+                        Token::BitwiseRightShift | Token::Equals | Token::NotEquals |
+                        Token::LessThan | Token::GreaterThan | Token::LessThanOrEqual |
+                        Token::GreaterThanOrEqual | Token::LogicalAnd | Token::LogicalOr |
+                        Token::LogicalNot | Token::Increment | Token::Decrement =>
+                            Some(self.tokens[self.head].to_string()),
+                        _ => {
+                            return Err("Expected operator".to_string());
+                        },
+                    };
+                    self.head += 1;
+                    match &self.tokens[self.head] {
+                        Token::RightParen => {
+                            self.head += 1;
+                        },
+                        _ => {
+                            return Err("Expected )".to_string());
+                        },
+                    }
+                    match &self.tokens[self.head] {
+                        Token::LeftParen => {
+                            self.head += 1;
+                        },
+                        _ => {
+                            return Err("Expected (".to_string());
+                        },
+                    }
+                    arguments = Some(self.function_arguments()?);
+                },
+                Token::LeftBrace => {
+                    self.head += 1;
+                    let code_block = self.code_block()?;
+
+                    return Ok(OperatorOverload::Normal {
+                        op: name.expect("no name"),
+                        arguments: arguments.expect("no arguments"),
+                        return_type: return_type.expect("no return type"),
+                        return_pointer: return_pointer,
+                        body: code_block,
+                    });
+                },
+                Token::Star => {
+                    self.head += 1;
+                    return_pointer += 1;
+                },
+                Token::Type(_) => {
+                    self.head += 1;
+                    return_type = Some(Type::from_token(token.clone())?);
+                },
+                Token::SemiColon => {
+                    self.head += 1;
+                    return Ok(OperatorOverload::Abstract {
+                        op: name.expect("no name"),
+                        arguments: arguments.expect("no arguments"),
+                        return_type: return_type.expect("no return type"),
+                        return_pointer: return_pointer,
+                    });
+                }
+                _ => {
+                    return Err(format!("Unexpected token in function: {:?}", token));
+                },
+            }
+            //self.head += 1;
+        }
+
+        return Err("Unexpected end of file".to_string());
+    }
+
     pub fn parse(&mut self) -> Result<Header, String> {
         let mut header_statements = Vec::new();
 
@@ -1914,9 +2216,8 @@ impl Parser {
                     }
 
                 },
-                Token::Class => {
-                    self.head += 1;
-
+                Token::Class | Token::Abstract => {
+                    header_statements.push(HeaderStatement::Class(self.class()?));
                 },
                 Token::Static | Token::Inline => {
                     self.head += 1;
@@ -2432,6 +2733,127 @@ mod ast_tests {
         println!("Result: {:?}", result);
         assert!(result.is_ok(),"Failed to parse complex tagged union");
 
+    }
+
+    #[test]
+    fn test_global_array_dec() {
+        let input = "int a[10];\nint main() { return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse global array declaration");
+    }
+
+    #[test]
+    fn test_global_var_mix_with_array() {
+        let input = "int a[10], b;\nint main() { return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse global array declaration");
+    }
+
+    #[test]
+    fn test_global_var_string_array_assign() {
+        let input = "char *a[10] = {\"Hello\", \"World\"};\nint main() { return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse global array declaration");
+    }
+
+    #[test]
+    fn test_global_var_string_array_assign_no_size() {
+        let input = "char a[] = \"Hello\";\nint main() { return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                assert!(false);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse global array declaration");
+    }
+    
+
+    #[test]
+    fn test_global_array_dec_4d() {
+        let input = "int a[10][10][10][10];\nint main() { return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse global array declaration");
+    }
+
+    #[test]
+    fn test_array_in_function() {
+        let input = "int main() { int a[10]; return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                assert!(false);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse array in function");
     }
 
 }

@@ -168,6 +168,7 @@ pub enum Variable {
 pub enum VariableList {
     BasicVars {
         type_: Type,
+        generic: bool,
         variables: Vec<Variable>,
     },
     FunctionPointer(Variable),
@@ -193,6 +194,7 @@ pub struct FunctionPrototype {
 pub struct Function {
     pub inline: bool,
     pub static_: bool,
+    pub generic: bool,
     pub return_type: Type,
     pub return_pointer: usize,
     pub name: String,
@@ -203,22 +205,39 @@ pub struct Function {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: String,
+    pub generic: Option<String>,
+    pub abstract_: bool,
     pub parent: Option<String>,
     pub members: Vec<ClassMember>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassMember {
-    Variables(Vec<VariableList>),
-    Methods(Vec<Method>),
+    Variable(VariableList),
+    Method(Method),
+    OperatorOverload(OperatorOverload),
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum OperatorOverload {
+    Normal {
+        return_type: Type,
+        return_pointer: usize,
+        op: String,
+        arguments: Vec<FunctionArgument>,
+        body: CodeBlock,
+    },
+    Abstract {
+        return_type: Type,
+        return_pointer: usize,
+        op: String,
+        arguments: Vec<FunctionArgument>,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Method {
-    pub return_type: Type,
-    pub name: String,
-    pub arguments: Vec<FunctionArgument>,
-    pub body: CodeBlock,
+pub enum Method {
+    Normal(Function),
+    Abstract(FunctionPrototype),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -291,6 +310,9 @@ impl Type {
             }),
             Token::Word(name) => Ok(Self {
                 types: TypeType::CompositeType(CompositeType::Identifier(name)),
+            }),
+            Token::Generic => Ok(Self {
+                types: TypeType::BaseType("Generic".to_string()),
             }),
             _ => Err(format!("Expected type, got {:?}",token)),
         }
