@@ -164,6 +164,8 @@ impl Parser {
 
         let start = self.head;
         let mut struct_enum_union = false;
+        let mut seen_word = false;
+        let mut seen_type = false;
         let mut node = AstNode::None;
         let mut type_pos = 0;
         let mut var_name = String::new();
@@ -180,6 +182,7 @@ impl Parser {
             let token = self.tokens[self.head].clone();
             match token {
                 Token::Type(_) => {
+                    seen_type = true;
                     type_pos = self.head;
                     self.head += 1;
                     //the_type = Some(Type::from_token(token.clone())?);
@@ -193,13 +196,23 @@ impl Parser {
                         the_type = Some(Type::from_token(self.tokens[start].clone())?);
                     }
                     else {
-                        if generic {
+                        if seen_word {
                             the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                            var_name = name.clone();
+                        }
+                        else if !seen_type{
+                            seen_word = true;
+                            type_pos = self.head;
+                        }
+                        else if seen_word && seen_type {
+                            self.merge_tokens(start..=self.head);
+                            self.head = self.head - (self.head - start);
+                            the_type = Some(Type::from_token(self.tokens[start].clone())?);
                         }
                         else {
                             the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                            var_name = name.clone();
                         }
-                        var_name = name.clone();
                     }
                     self.head += 1;
                 },
@@ -208,12 +221,7 @@ impl Parser {
                         the_type = Some(Type::from_token(self.tokens[start].clone())?);
                     }
                     else {
-                        if generic {
-                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
-                        }
-                        else {
-                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
-                        }
+                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
                     }
                     self.head += 1;
                     pointer += 1;
@@ -439,20 +447,60 @@ impl Parser {
         let mut pointer = 0;
         let mut num_periods = 0;
         let mut restrict = false;
+        let mut generic = false;
+        let mut start = self.head;
+        let mut struct_enum_union = false;
+        let mut type_pos = 0;
+        let mut seen_word = false;
+        let mut seen_type = false;
         
         while self.head < self.tokens.len() {
             let token = &self.tokens[self.head];
             match token {
                 Token::Type(_) => {
+                    seen_type = true;
+                    type_pos = self.head;
                     self.head += 1;
-                    the_type = Some(Type::from_token(token.clone())?);
+                    //the_type = Some(Type::from_token(token.clone())?);
                 },
                 Token::Word(name) => {
+                    if struct_enum_union {
+                        self.merge_tokens(start..self.head);
+                        struct_enum_union = false;
+                        self.head = self.head - (self.head - start);
+                        
+                        the_type = Some(Type::from_token(self.tokens[start].clone())?);
+                    }
+                    else {
+                        if seen_word {
+                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                            var_name = Some(name.clone());
+                        }
+                        else if !seen_type{
+                            seen_word = true;
+                            type_pos = self.head;
+                        }
+                        else if seen_word && seen_type {
+                            self.merge_tokens(start..=self.head);
+                            self.head = self.head - (self.head - start);
+                            the_type = Some(Type::from_token(self.tokens[start].clone())?);
+                        }
+                        else {
+                            the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                            var_name = Some(name.clone());
+                        }
+                    }
                     self.head += 1;
-                    var_name = Some(name.clone());
+                    //var_name = Some(name.clone());
                 },
                 Token::Star => {
                     self.head += 1;
+                    if struct_enum_union {
+                        the_type = Some(Type::from_token(self.tokens[start].clone())?);
+                    }
+                    else {
+                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                    }
                     pointer += 1;
                 },
                 Token::Period => {
@@ -471,16 +519,29 @@ impl Parser {
                 },
                 Token::Comma => {
                     self.head += 1;
+                    start = self.head;
+                    if seen_word && !seen_type {
+                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                    }
+                    else if seen_word && seen_type {
+                        self.merge_tokens(start..=self.head);
+                        self.head = self.head - (self.head - start);
+                        the_type = Some(Type::from_token(self.tokens[start].clone())?);
+                    }
+                    
                     if num_periods != 0 {
                         return Err("Ellipsis in wrong spot.".to_string());
                     }
                     else if var_name.is_none() {
-                        arguments.push(FunctionArgument::Type(the_type.expect("no type"), pointer));
+                        arguments.push(FunctionArgument::Type(the_type.expect("no type"), pointer,generic));
                         the_type = None;
                         pointer = 0;
                     }
                     else {
-                        arguments.push(FunctionArgument::Variable(the_type.expect("no type"),Variable::BasicVar {
+                        arguments.push(
+                            FunctionArgument::Variable(the_type.expect("no type"),
+                                                       generic,
+                                                       Variable::BasicVar {
                             name: var_name.expect("no name"),
                             array: None,
                             value: None,
@@ -493,9 +554,20 @@ impl Parser {
                         restrict = false;
                     }
 
+                    seen_word = false;
+                    seen_type = false;
+                    type_pos = 0;
                 },
                 Token::RightParen => {
                     self.head += 1;
+                    if seen_word && !seen_type {
+                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                    }
+                    else if seen_word && seen_type {
+                        self.merge_tokens(start..=self.head);
+                        self.head = self.head - (self.head - start);
+                        the_type = Some(Type::from_token(self.tokens[start].clone())?);
+                    }
                     if num_periods == 3 {
                         arguments.push(FunctionArgument::Ellipsis);
                         self.head += 1;
@@ -504,13 +576,13 @@ impl Parser {
                         return Err("Too few periods in function argument".to_string());
                     }
                     else if var_name.is_none() && the_type.is_some() {
-                        arguments.push(FunctionArgument::Type(the_type.expect("no type"), pointer));
+                        arguments.push(FunctionArgument::Type(the_type.expect("no type"), pointer, generic));
                         the_type = None;
                         pointer = 0;
                         self.head += 1;
                     }
                     else if the_type.is_some() && var_name.is_some() {
-                        arguments.push(FunctionArgument::Variable(the_type.expect("no type"),Variable::BasicVar {
+                        arguments.push(FunctionArgument::Variable(the_type.expect("no type"),generic,Variable::BasicVar {
                             name: var_name.expect("no name"),
                             array: None,
                             value: None,
@@ -544,7 +616,17 @@ impl Parser {
                             return Err("Expected function".to_string());
                         },
                     }
-                    
+                },
+                Token::Struct | Token::Enum | Token::Union | Token::Tagged => {
+                    self.head += 1;
+                    struct_enum_union = true;
+                },
+                Token::Generic => {
+                    self.head += 1;
+                    if generic {
+                        return Err("Too many generic keywords in function".to_string());
+                    }
+                    generic = true;
                 },
                 _ => {
                     return Err(format!("Unexpected token in function arguments: {:?}", token));
@@ -558,6 +640,10 @@ impl Parser {
     }
 
     fn function(&mut self) -> Result<AstNode, String> {
+        let start = self.head;
+        let mut struct_enum_union = false;
+        let mut type_pos = 0;
+        let mut seen_word = false;
         let mut name = None;
         let mut arguments = None;
         let mut return_type = None;
@@ -571,10 +657,29 @@ impl Parser {
             println!("Function: {:?}", token);
             match token {
                 Token::Word(word) => {
-                    name = Some(word.clone());
+                    if struct_enum_union {
+                        self.merge_tokens(start..self.head);
+                        struct_enum_union = false;
+                        self.head = self.head - (self.head - start);
+
+                        return_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                    }
+                    else {
+                        if seen_word {
+                            return_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                            name = Some(word.clone());
+                        }
+                        else {
+                            seen_word = true;
+                            type_pos = self.head;
+                        }
+                    }
                     self.head += 1;
                 },
                 Token::LeftParen => {
+                    if !seen_word {
+                        name = Some(self.tokens[type_pos].clone().to_string());
+                    }
                     self.head += 1;
                     arguments = Some(self.function_arguments()?);
                 },
@@ -594,6 +699,12 @@ impl Parser {
                     }));
                 },
                 Token::Star => {
+                    if struct_enum_union {
+                        return_type = Some(Type::from_token(self.tokens[start].clone())?);
+                    }
+                    else {
+                        return_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                    }
                     self.head += 1;
                     return_pointer += 1;
                 },
@@ -618,7 +729,12 @@ impl Parser {
                         return_pointer: return_pointer,
                     }));
                 },
+                Token::Struct | Token::Enum | Token::Union | Token::Tagged => {
+                    self.head += 1;
+                    struct_enum_union = true;
+                },
                 Token::Generic => {
+                    type_pos = self.head;
                     self.head += 1;
                     generic = true;
                 },
