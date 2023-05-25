@@ -177,8 +177,8 @@ pub enum VariableList {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FunctionArgument {
     FunctionPointer(Variable),
-    Variable(Type, bool, Variable),
-    Type(Type,usize, bool),
+    Variable(Type, Variable),
+    Type(Type,usize),
     Ellipsis,
 }
 
