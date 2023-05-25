@@ -3,6 +3,7 @@
 use crate::ast::*;
 use crate::logos_lexer::Token;
 
+use std::ops::{Range, RangeInclusive};
 
 
 
@@ -13,6 +14,39 @@ pub struct Parser {
     node_buffer: Vec<AstNode>,
 }
 
+pub trait Merge<R> {
+    fn merge_tokens(&mut self, other: R);
+}
+
+impl Merge<Range<usize>> for Parser {
+    fn merge_tokens(&mut self, range: Range<usize>) {
+        let mut merge = self.tokens[range.clone()].iter().fold(String::new(), |mut acc, token| {
+            acc.push_str(&token.to_string());
+            acc.push_str(" ");
+            acc
+        });
+        merge.pop();
+
+        self.tokens.drain(range.clone());
+        self.tokens.insert(range.start, Token::Type(merge));
+        println!("Merged tokens: {:?}", self.tokens);
+    }
+}
+
+impl Merge<RangeInclusive<usize>> for Parser {
+    fn merge_tokens(&mut self, range: RangeInclusive<usize>) {
+        let mut merge = self.tokens[range.clone()].iter().fold(String::new(), |mut acc, token| {
+            acc.push_str(&token.to_string());
+            acc.push_str(" ");
+            acc
+        });
+        merge.pop();
+
+        self.tokens.drain(range.clone());
+        self.tokens.insert(*range.start(), Token::Type(merge));
+        println!("Merged tokens: {:?}", self.tokens);
+    }
+}
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Parser {
@@ -22,6 +56,7 @@ impl Parser {
             node_buffer: Vec::new(),
         }
     }
+
 
     fn preprocessors(&mut self) -> Result<Vec<Preprocessor>, String> {
         let mut preprocessor = Vec::new();
@@ -124,7 +159,10 @@ impl Parser {
 
     fn variable_dec(&mut self) -> Result<AstNode, String> {
 
+        let start = self.head;
+        let mut struct_enum_union = false;
         let mut node = AstNode::None;
+        let mut type_pos = 0;
         let mut var_name = String::new();
         let mut the_type = None;
         let mut pointer = 0;
@@ -134,17 +172,34 @@ impl Parser {
         
         
         while self.head < self.tokens.len() {
-            let token = &self.tokens[self.head];
+            let token = self.tokens[self.head].clone();
             match token {
                 Token::Type(_) => {
+                    type_pos = self.head;
                     self.head += 1;
-                    the_type = Some(Type::from_token(token.clone())?);
+                    //the_type = Some(Type::from_token(token.clone())?);
                 },
                 Token::Word(name) => {
-                    var_name = name.clone();
+                    if struct_enum_union {
+                        self.merge_tokens(start..self.head);
+                        struct_enum_union = false;
+                        self.head = self.head - (self.head - start);
+                        
+                        the_type = Some(Type::from_token(self.tokens[start].clone())?);
+                    }
+                    else {
+                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                        var_name = name.clone();
+                    }
                     self.head += 1;
                 },
                 Token::Star => {
+                    if struct_enum_union {
+                        the_type = Some(Type::from_token(self.tokens[start].clone())?);
+                    }
+                    else {
+                        the_type = Some(Type::from_token(self.tokens[type_pos].clone())?);
+                    }
                     self.head += 1;
                     pointer += 1;
                 },
@@ -190,6 +245,10 @@ impl Parser {
                     restrict = false;
                     return Ok(AstNode::VariableList(VariableList::BasicVars {type_: the_type.expect("no type"), variables: variable_list}));
                 },//TODO: add array
+                Token::Struct | Token::Enum | Token::Union | Token::Tagged => {
+                    self.head += 1;
+                    struct_enum_union = true;
+                },
                 _ => {
                     return Err(format!("Unexpected token: {:?}", token));
                 },
@@ -520,7 +579,7 @@ impl Parser {
                     statements.push(Statement::Comment(value.clone()));
                     self.head += 1;
                 },
-                Token::Type(_) => {
+                Token::Struct | Token::Union | Token::Enum | Token::Tagged |Token::Type(_) => {
                     self.head += 1;
                     let node = self.variable_list_or_function()?;
                     match node {
@@ -531,7 +590,7 @@ impl Parser {
                             return Err("Functions cannot be declared inside of a code block".to_string());
                         },
                         _ => {
-                            return Err("Expected variable list or function".to_string());
+                            return Err("Expected variable list".to_string());
                         },
                     }
                 },
@@ -548,6 +607,14 @@ impl Parser {
                 _ => {
                     let expression = self.expression(None)?;
                     statements.push(Statement::Expression(expression));
+                    match &self.tokens[self.head] {
+                        Token::SemiColon => {
+                            self.head += 1;
+                        },
+                        _ => {
+                            return Err("Expected semicolon".to_string());
+                        },
+                    }
                 },
             }
         }
@@ -921,6 +988,44 @@ impl Parser {
                         }
                         
                     },
+                    Token::Period => {
+                        self.head += 1;
+                        let terminal_expr = self.expression(None)?;
+                        full_expression = Some(self.expression(Some(Expression::Binary(
+                            BinaryOperator::MemberAccess,Box::new(expression),
+                            Box::new(terminal_expr))))?);
+                    },
+                    Token::Arrow => {
+                        self.head += 1;
+                        let terminal_expr = self.expression(None)?;
+                        full_expression = Some(self.expression(Some(Expression::Binary(
+                            BinaryOperator::PointerMemberAccess,Box::new(expression),
+                            Box::new(terminal_expr))))?);
+                    },
+                    Token::LeftParen => {
+                        self.head += 1;
+
+                        match &self.tokens[self.head] {
+                            Token::RightParen => {
+                                self.head += 1;
+                                full_expression = Some(self.expression(Some(
+                                    Expression::CallFunction(expression.get_value().expect("Not identifier"), None)))?);
+                            },
+                            _ => {
+                                let args = self.expression(None)?;
+                                match &self.tokens[self.head] {
+                                    Token::RightParen => {
+                                        self.head += 1;
+                                        full_expression = Some(self.expression(Some(
+                                            Expression::CallFunction(expression.get_value().expect("Not identifier"), Some(Box::new(args)))))?);
+                                    },
+                                    _ => {
+                                        return Err("Expected right parenthesis".to_string());
+                                    },
+                                }
+                            },
+                        }
+                    },
                     Token::Plus => {
                         self.head += 1;
                         full_expression = Some(Expression::Binary(
@@ -1202,134 +1307,7 @@ impl Parser {
                 match self.tokens[self.head].clone() {
                     Token::Word(ident) => {//check for function call or typedef
                         self.head += 1;
-
-                        match self.tokens[self.head].clone() {
-                            Token::LeftParen => {
-                                self.head += 1;
-
-                                let arguments = match self.expression(None)? {
-                                    Expression::Blank => {
-                                        None
-                                    },
-                                    _ => {
-                                        Some(Box::new(self.expression(None)?))
-                                    },
-
-                                };
-
-                                match self.tokens[self.head] {
-                                    Token::RightParen => {
-                                        self.head += 1;
-                                        full_expression = Some(self.expression(Some(Expression::CallFunction(ident, arguments)))?);
-                                    },
-                                    _ => {
-                                        return Err("Expected right parenthesis".to_string());
-                                    },
-                                }
-                                
-                            },
-                            Token::Period => {
-                                self.head += 1;
-                                let member = match self.tokens[self.head].clone() {
-                                    Token::Word(ident) => {
-                                        self.head += 1;
-                                        ident
-                                    },
-                                    _ => {
-                                        return Err("Expected identifier".to_string());
-                                    },
-                                };
-
-                                match self.tokens[self.head].clone() {
-                                    Token::LeftParen => {
-                                        self.head += 1;
-
-                                        let arguments = match self.expression(None)? {
-                                            Expression::Blank => {
-                                                None
-                                            },
-                                            _ => {
-                                                Some(Box::new(self.expression(None)?))
-                                            },
-
-                                        };
-
-                                        match self.tokens[self.head] {
-                                            Token::RightParen => {
-                                                self.head += 1;
-                                                full_expression = Some(self.expression(Some(Expression::CallMethod(false, ident, member.clone(), arguments)))?);
-                                            },
-                                            _ => {
-                                                return Err("Expected right parenthesis".to_string());
-                                            },
-                                        }
-                                        
-                                    },
-
-                                    _ => {
-                                        full_expression = Some(self.expression(Some(
-                                            Expression::Binary(BinaryOperator::MemberAccess,
-                                                Box::new(Expression::Identifier(ident)),
-                                                Box::new(Expression::Identifier(member.clone()))
-                                            )))?);
-                                    },
-                                }                                
-                            },
-                            Token::Arrow => {
-                                self.head += 1;
-                                let member = match self.tokens[self.head].clone() {
-                                    Token::Word(ident) => {
-                                        self.head += 1;
-                                        ident
-                                    },
-                                    _ => {
-                                        return Err("Expected identifier".to_string());
-                                    },
-                                };
-
-                                match self.tokens[self.head].clone() {
-                                    Token::LeftParen => {
-                                        self.head += 1;
-
-                                        let temp = self.expression(None)?;
-                                        
-                                        let arguments = match temp {
-                                            Expression::Blank => {
-                                                None
-                                            },
-                                            _ => {
-                                                Some(Box::new(self.expression(None)?))
-                                            },
-
-                                        };
-
-                                        match self.tokens[self.head] {
-                                            Token::RightParen => {
-                                                self.head += 1;
-                                                full_expression = Some(self.expression(Some(Expression::CallMethod(true, ident, member.clone(), arguments)))?);
-                                            },
-                                            _ => {
-                                                return Err("Expected right parenthesis".to_string());
-                                            },
-                                        }
-                                        
-                                    },
-
-                                    _ => {
-                                        full_expression = Some(self.expression(Some(
-                                            Expression::Binary(BinaryOperator::PointerMemberAccess,
-                                                Box::new(Expression::Identifier(ident)),
-                                                Box::new(Expression::Identifier(member.clone()))
-                                            )))?);
-                                    },
-                                }                                
-
-
-                            },
-                            _ => {
-                                full_expression = Some(self.expression(Some(Expression::Identifier(ident)))?);
-                            },
-                        }
+                        full_expression = Some(self.expression(Some(Expression::Identifier(ident)))?);
                     },
                     Token::Number(num) => {
                         self.head += 1;
@@ -1351,7 +1329,21 @@ impl Parser {
                         self.head += 1;
                         full_expression = Some(self.expression(Some(Expression::Literal(Literal::Bool(false))))?);
                     },
-                    Token::LeftParen => {//check for cast, compoundLiteral
+                    Token::Period => {
+                        self.head += 1;
+
+                        match &self.tokens[self.head] {
+                            Token::Word(ident) => {
+                                self.head += 1;
+                                full_expression = Some(self.expression(Some(Expression::Unary(UnaryOperator::MemberSet, Box::new(Expression::Identifier(ident.clone())))))?);
+                            },
+                            _ => {
+                                return Err("Expected identifier".to_string());
+                            },
+                        }
+                        
+                    },
+                     Token::LeftParen => {//check for cast, compoundLiteral
                         self.head += 1;
                         match &self.tokens[self.head] {
                             Token::Type(the_type) => {
@@ -1501,6 +1493,331 @@ impl Parser {
         }
     }
 
+    fn struct_dec(&mut self, name: &str) -> Result<AstNode, String> {
+        let mut members = Vec::new();
+        while self.tokens[self.head] != Token::RightBrace {
+            self.head += 1;
+            match self.variable_list_or_function()? {
+                AstNode::VariableList(variable_list) => {
+                    members.push(variable_list);
+                },
+                AstNode::Function(function) => {
+                    return Err("Functions not allowed in structs".to_string());
+                },
+                _ => {
+                    return Err("Expected variable list or function".to_string());
+                },
+            }
+        }
+
+        match self.tokens[self.head] {
+            Token::RightBrace => {
+                self.head += 1;
+                match self.tokens[self.head] {
+                    Token::SemiColon => {
+                        self.head += 1;
+                    },
+                    _ => {
+                        return Err("Expected semicolon".to_string());
+                    },
+                }
+                return Ok(AstNode::Struct(Struct {name: name.to_string(), members}));
+            },
+            _ => {
+                return Err("Expected right brace".to_string());
+            },
+        }
+        
+    }
+
+    fn union_dec(&mut self, name: &str) -> Result<AstNode, String> {
+        let mut members = Vec::new();
+        while self.tokens[self.head] != Token::RightBrace {
+            self.head += 1;
+            match self.variable_list_or_function()? {
+                AstNode::VariableList(variable_list) => {
+                    members.push(variable_list);
+                },
+                AstNode::Function(function) => {
+                    return Err("Functions not allowed in unions".to_string());
+                },
+                _ => {
+                    return Err("Expected variable list or function".to_string());
+                },
+            }
+        }
+
+        match self.tokens[self.head] {
+            Token::RightBrace => {
+                self.head += 1;
+                match self.tokens[self.head] {
+                    Token::SemiColon => {
+                        self.head += 1;
+                    },
+                    _ => {
+                        return Err("Expected semicolon".to_string());
+                    },
+                }
+                return Ok(AstNode::Union(Union {name: name.to_string(), members}));
+            },
+            _ => {
+                return Err("Expected right brace".to_string());
+            },
+        }
+    }
+
+    fn enum_dec(&mut self, name: &str) -> Result<AstNode, String> {
+        let mut members = Vec::new();
+        while self.tokens[self.head] != Token::RightBrace {
+            members.push(self.enum_member()?);
+            match self.tokens[self.head] {
+                Token::Comma => {
+                    self.head += 1;
+                },
+                Token::RightBrace => {
+                    break;
+                },
+                _ => {
+                    return Err("Expected comma or right brace".to_string());
+                },
+            }
+        }
+
+        match self.tokens[self.head] {
+            Token::RightBrace => {
+                self.head += 1;
+                match self.tokens[self.head] {
+                    Token::SemiColon => {
+                        self.head += 1;
+                    },
+                    _ => {
+                        return Err("Expected semicolon".to_string());
+                    },
+                }
+                return Ok(AstNode::Enum(Enum {name: name.to_string(), members}));
+            },
+            _ => {
+                return Err("Expected right brace".to_string());
+            },
+        }
+    }
+
+    fn enum_member(&mut self) -> Result<EnumMember,String> {
+        let mut name = None;
+        let mut value = None;
+
+        match &self.tokens[self.head] {
+            Token::Word(val) => {
+                name = Some(val.clone());
+                self.head += 1;
+                match &self.tokens[self.head] {
+                    Token::Assignment => {
+                        self.head += 1;
+                        value = Some(self.expression(None)?);
+                    },
+                    _ => {
+                    },
+                }
+            },
+
+            _ => {
+                return Err("Expected identifier".to_string());
+            },
+        }
+
+        return Ok(EnumMember {name: name.unwrap(), value});
+    }
+
+    fn tagged_union_dec(&mut self, name: &str) -> Result<AstNode, String> {
+        let mut members = Vec::new();
+        while self.tokens[self.head] != Token::RightBrace {
+            members.push(self.tagged_union_member()?);
+            match self.tokens[self.head] {
+                Token::Comma => {
+                    self.head += 1;
+                },
+                Token::RightBrace => {
+                    break;
+                },
+                _ => {
+                    return Err("Expected comma or right brace".to_string());
+                },
+            }
+        }
+
+        match self.tokens[self.head] {
+            Token::RightBrace => {
+                self.head += 1;
+                match self.tokens[self.head] {
+                    Token::SemiColon => {
+                        self.head += 1;
+                    },
+                    _ => {
+                        return Err("Expected semicolon".to_string());
+                    },
+                }
+                return Ok(AstNode::TaggedUnion(TaggedUnion {name: name.to_string(), members}));
+            },
+            _ => {
+                return Err("Expected right brace".to_string());
+            },
+        }
+    }
+
+    fn tagged_union_member(&mut self) -> Result<TaggedUnionMember,String> {
+        let mut name = None;
+        let mut value = None;
+
+        while self.tokens[self.head] != Token::Comma && self.tokens[self.head] != Token::RightBrace {
+            match &self.tokens[self.head] {
+                Token::Word(val) => {
+                    self.head += 1;
+                    name = Some(val.clone());
+                },
+                Token::LeftBrace => {
+                    self.head += 1;
+                    value = Some(Vec::new());
+                    while self.tokens[self.head] != Token::RightBrace {
+                        value.as_mut().unwrap().push(match self.variable_list_or_function()? {
+                            AstNode::VariableList(variable_list) => {
+                                variable_list
+                            },
+                            AstNode::Function(_) => {
+                                return Err("Functions not allowed in tagged unions".to_string());
+                            },
+                            _ => {
+                                return Err("Expected variable list or function".to_string());
+                            },
+                        });
+                        match self.tokens[self.head] {
+                            Token::SemiColon => {
+                                self.head += 1;
+                            },
+                            Token::RightBrace => {
+                                break;
+                            },
+                            _ => {
+                                return Err("Expected comma or right brace".to_string());
+                            },
+                        }
+                    }
+                },
+                _ => {
+                    return Err("Expected identifier or left brace".to_string());
+                },
+            }
+
+        }
+        
+        return Ok(TaggedUnionMember {name: name.unwrap(), value});
+    }
+
+    fn compound_type_dec_or_vlist_or_func(&mut self) -> Result<AstNode, String> {
+        enum State {
+            None,
+            Struct,
+            Union,
+            Enum,
+            Tagged
+        }
+        let mut node = AstNode::None;
+        let mut buffer = self.head - 1;
+        let mut word_seen = false;
+        let mut state = State::None;
+        let mut name = None;
+        self.head -= 1;
+
+        while buffer < self.tokens.len() {
+            let token = &self.tokens[buffer];
+            match token {
+                Token::Struct => {
+                    buffer += 1;
+                    match state {
+                        State::None => {
+                            state = State::Struct;
+                        },
+                        _ => {
+                            return Err(format!("Unexpected token: {:?}", token));
+                        },
+                    }
+                },
+                Token::Enum => {
+                    buffer += 1;
+                    match state {
+                        State::None => {
+                            state = State::Enum;
+                        },
+                        _ => {
+                            return Err(format!("Unexpected token: {:?}", token));
+                        },
+                    }
+                },
+                Token::Union => {
+                    buffer += 1;
+                    match state {
+                        State::None => {
+                            state = State::Union;
+                        },
+                        _ => {
+                            return Err(format!("Unexpected token: {:?}", token));
+                        },
+                    }
+                },
+                Token::Tagged => {
+                    buffer += 1;
+                    match state {
+                        State::None => {
+                            state = State::Tagged;
+                        },
+                        _ => {
+                            return Err(format!("Unexpected token: {:?}", token));
+                        },
+                    }
+                },
+                Token::Word(val) => {
+                    buffer += 1;
+                    if word_seen {
+                        self.merge_tokens(0..=buffer);
+                        return self.variable_list_or_function();
+                    }
+                    else {
+                        name = Some(val.clone());
+                        word_seen = true;
+                    }
+                },
+                Token::Type(_) => {
+                    buffer += 1;
+                },
+                Token::LeftBrace => {
+                    buffer += 1;
+                    self.head = buffer;
+                    match state {
+                        State::Struct => {
+                            node = self.struct_dec(&name.expect("Struct has no name"))?;
+                        },
+                        State::Union => {
+                            node = self.union_dec(&name.expect("Union has no name"))?;
+                        },
+                        State::Enum => {
+                            node = self.enum_dec(&name.expect("Enum has no name"))?;
+                        },
+                        State::Tagged => {
+                            node = self.tagged_union_dec(&name.expect("Tagged has no name"))?;
+                        },
+                        _ => {
+                            return Err(format!("Unexpected token: {:?}", token));
+                        },
+                    }
+                    return Ok(node);
+                },
+                _ => {
+                    return Err(format!("Unexpected token: {:?}", token));
+                },
+                
+            }
+        }
+        Err("Unexpected end of file".to_string())
+    }
 
     pub fn parse(&mut self) -> Result<Header, String> {
         let mut header_statements = Vec::new();
@@ -1510,6 +1827,7 @@ impl Parser {
         }
 
         while self.tokens.len() != 0 {
+            println!("{:?}", self.tokens);
             println!("Parsing token {:?}", self.tokens[0]);
             match self.tokens[0] {
                 Token::Preprocessor(_) => {
@@ -1520,17 +1838,34 @@ impl Parser {
                     self.head += 1;
 
                 },
-                Token::Struct => {
+                Token::Struct | Token::Enum | Token::Union | Token::Tagged => {
                     self.head += 1;
+                    let node = self.compound_type_dec_or_vlist_or_func()?;
 
-                },
-                Token::Enum => {
-                    self.head += 1;
-
-                },
-                Token::Union => {
-                    self.head += 1;
-
+                    match node {
+                        AstNode::Struct(struct_) => {
+                            header_statements.push(HeaderStatement::Struct(struct_));
+                        },
+                        AstNode::VariableList(variable_list) => {
+                            header_statements.push(HeaderStatement::Variable(variable_list));
+                        },
+                        AstNode::Function(function) => {
+                            header_statements.push(HeaderStatement::Function(function));
+                        },
+                        AstNode::Enum(enum_) => {
+                            header_statements.push(HeaderStatement::Enum(enum_));
+                        },
+                        AstNode::Union(union_) => {
+                            header_statements.push(HeaderStatement::Union(union_));
+                        },
+                        AstNode::TaggedUnion(tagged) => {
+                            header_statements.push(HeaderStatement::TaggedUnion(tagged));
+                        },
+                        _ => {
+                            return Err(format!("Unexpected node: {:?}", node));
+                        },
+                    }
+                    
                 },
                 Token::Type(_) => {//Variable, Function
                     self.head += 1;
@@ -1598,6 +1933,7 @@ mod ast_tests {
     #[test]
     fn test_preprocessor() {
         let input = "#include <stdio.h>\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1616,6 +1952,7 @@ mod ast_tests {
     #[test]
     fn test_macros() {
         let input = "#define MAX(a, b) ((a) > (b) ? (a) : (b))\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1634,6 +1971,7 @@ mod ast_tests {
     #[test]
     fn test_global_variable() {
         let input = "int a;\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1651,6 +1989,7 @@ mod ast_tests {
     #[test]
     fn test_global_variables() {
         let input = "int a, b, c;\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1668,6 +2007,7 @@ mod ast_tests {
     #[test]
     fn test_global_var_string() {
         let input = "char *a = \"Hello World\";\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1679,12 +2019,15 @@ mod ast_tests {
         println!("Tokens: {:?}", tokens);
 
         let mut parser = Parser::new(tokens);
-        assert!(parser.parse().is_ok(), "Failed to parse global variable");
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse global variable");
     }
 
     #[test]
     fn test_global_var_pointers() {
         let input = "int *a, *b, *c;\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1702,6 +2045,7 @@ mod ast_tests {
     #[test]
     fn test_global_var_pointer_mix() {
         let input = "int *a, b, *c;\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1719,6 +2063,7 @@ mod ast_tests {
     #[test]
     fn test_global_var_fail() {
         let input = "int a, b, c\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1736,6 +2081,7 @@ mod ast_tests {
     #[test]
     fn test_global_function_ptr() {
         let input = "int (*func)(int, int);\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1753,6 +2099,7 @@ mod ast_tests {
     #[test]
     fn test_global_function_ptr_var() {
         let input = "int (*func)(int x, int y);\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1770,6 +2117,7 @@ mod ast_tests {
     #[test]
     fn test_global_nested_function_ptr() {
         let input = "int (*func)(int (*)(int, int), int);\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1787,6 +2135,7 @@ mod ast_tests {
     #[test]
     fn test_simple_function() {
         let input = "int main() { return 0; }\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1806,6 +2155,7 @@ mod ast_tests {
     #[test]
     fn test_simple_program() {
         let input = "int main() { return 0; }\nint a;\nint b;\nint c;\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1821,9 +2171,10 @@ mod ast_tests {
         assert!(result.is_ok(), "Failed to parse simple program");
     }
 
-    /*#[test]
+    #[test]
     fn test_hello_world_program() {
         let input = "#include <stdio.h>\nint main() { printf(\"Hello World\"); return 0; }\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1837,10 +2188,11 @@ mod ast_tests {
         let result = parser.parse();
         println!("Result: {:?}", result);
         assert!(result.is_ok(), "Failed to parse hello world program");
-}*/
+}
     #[test]
     fn test_math_program() {
         let input = "int main() { return 1 + 2 * 3; }\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1859,6 +2211,7 @@ mod ast_tests {
     #[test]
     fn test_nested_expressions() {
         let input = "int main() { return 1 + (2 * 3); }\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1877,6 +2230,7 @@ mod ast_tests {
     #[test]
     fn test_variables_in_function() {
         let input = "int main() { int a; int b; int c; return 0; }\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1895,6 +2249,7 @@ mod ast_tests {
     #[test]
     fn test_global_var_assignment() {
         let input = "int a = 0;\nint b = 1;\nint c = 2;\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1913,6 +2268,7 @@ mod ast_tests {
     #[test]
     fn test_global_var_assignment_with_expr() {
         let input = "int a = 0 + 1;\nint b = 1 + 2;\nint c = 2 + 3;\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1931,6 +2287,7 @@ mod ast_tests {
     #[test]
     fn test_struct_access() {
         let input = "struct foo { int a; int b; int c; };\nint main() { struct foo f; f.a = 0; f.b = 1; f.c = 2; return 0; }\n";
+        println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,
             Err(err) => {
@@ -1944,6 +2301,107 @@ mod ast_tests {
         let result = parser.parse();
         println!("Result: {:?}", result);
         assert!(result.is_ok(), "Failed to parse struct access");
+    }
+
+    #[test]
+    fn test_method_call() {
+        let input = "int main() {\n clss.method();\n return 0;\n}\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                assert!(false);
+                return
+            },
+        };
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse method call");
+    }
+
+    #[test]
+    fn test_union_access() {
+        let input = "union foo { int a; int b; int c; };\nint main() { union foo f; f.a = 0; f.b = 1; f.c = 2; return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+        
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse union access");
+    }
+
+    #[test]
+    fn test_enum() {
+        let input = "enum foo { a, b, c };\nint main() { enum foo f; f = a; return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+        
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(), "Failed to parse enum");
+    }
+
+    #[test]
+    fn test_simple_tagged_union() {
+        let input = "tagged foo { a,b,c};\nint main() { tagged foo f; f = a; return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse simple tagged union");
+
+    }
+
+    #[test]
+    fn test_complex_tagged_union() {
+        let input = "tagged foo { a {int a, b, c}, b {char *a; int b;}, c {int a; char *b;}};\nint main() { tagged foo f; f = a {1,2,3}; return 0; }\n";
+        println!("Input: {}", input);
+        let tokens = match lex(input) {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                assert!(false);
+                println!("Error: {:?}", err);
+                return
+            },
+        };
+
+        println!("Tokens: {:?}", tokens);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+        println!("Result: {:?}", result);
+        assert!(result.is_ok(),"Failed to parse complex tagged union");
+
     }
 
 }

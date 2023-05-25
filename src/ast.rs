@@ -43,6 +43,7 @@ pub enum AstNode {
     BinaryOperator(BinaryOperator),
     Initializer(Initializer),
     Designator(Designator),
+    TaggedUnion(TaggedUnion),
 
 }
 
@@ -62,6 +63,7 @@ pub enum HeaderStatement {
     FunctionPrototype(FunctionPrototype),
     Function(Function),
     Class(Class),
+    TaggedUnion(TaggedUnion),
     Whitespace,
 }
 
@@ -101,7 +103,7 @@ pub struct Struct {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Union {
     pub name: String,
-    pub members: Vec<Variable>,
+    pub members: Vec<VariableList>,
 }
 
 #[derive(Debug, Clone,  PartialEq)]
@@ -113,8 +115,21 @@ pub struct Enum {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumMember {
     pub name: String,
-    pub value: Option<String>,
+    pub value: Option<Expression>,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedUnion {
+    pub name: String,
+    pub members: Vec<TaggedUnionMember>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedUnionMember {
+    pub name: String,
+    pub value: Option<Vec<VariableList>>,
+}
+
 
 #[derive(Debug, Clone,  PartialEq)]
 pub enum VariableValue {
@@ -377,13 +392,29 @@ pub enum Expression {
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>),
     CallFunction(String, Option<Box<Expression>>),
-    CallMethod(bool, String, String, Option<Box<Expression>>),
+    //CallMethod(bool, String, String, Option<Box<Expression>>),
     InitializerList(Box<Expression>),
     //CompoundLiteral(Type, bool,Initializer),
     //InitializerList(Vec<Initializer>),
     StatementList(StatementList),
     Expression(Box<Expression>),
     Parentheses(Box<Expression>),
+}
+
+impl Expression {
+    pub fn get_value(&self) -> Option<String> {
+        match self {
+            Expression::Literal(literal) => match literal {
+                Literal::Number(number) => Some(number.clone()),
+                Literal::Char(character) => Some(character.clone()),
+                Literal::String(string) => Some(string.clone()),
+                Literal::Bool(boolean) => Some(boolean.to_string()),
+            },
+            Expression::Identifier(name) => Some(name.clone()),
+            _ => None,
+        }
+    }
+
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -408,6 +439,7 @@ pub enum UnaryOperator {
     PostIncrement,
     PostDecrement,
     Cast(Type,usize),
+    MemberSet
 }
 
 #[derive(Debug, Clone, PartialEq)]

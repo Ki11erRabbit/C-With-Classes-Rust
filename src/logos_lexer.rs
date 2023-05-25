@@ -228,10 +228,12 @@ pub enum TokenPreparse<'input> {
     False,
     #[token("typeof")]
     Typeof,
-    #[token("typeofunqual")]
+    #[token("typeof_unqual")]
     TypeofUnqual,
 
-
+    
+    #[token("tagged")]
+    Tagged,
     #[token("private")]
     Private,
     #[token("class")]
@@ -351,9 +353,110 @@ pub enum Token {
     Typeof,
     TypeofUnqual,
 
-
+    Tagged,
     Private,
     Class,
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Newline => write!(f, "Newline"),
+            Token::Word(s) => write!(f, "{}", s),
+            Token::Number(s) => write!(f, "{}", s),
+            Token::String(s) => write!(f, "{}", s),
+            Token::Include(s) => write!(f, "{}", s),
+            Token::Macro(s) => write!(f, "{}", s),
+            Token::Preprocessor(s) => write!(f, "{}", s),
+            Token::Character(s) => write!(f, "{}", s),
+            Token::Comment(s) => write!(f, "{}", s),
+            Token::SemiColon => write!(f, ";"),
+            Token::Colon => write!(f, ":"),
+            Token::Comma => write!(f, ","),
+            Token::Period => write!(f, "."),
+            Token::LeftParen => write!(f, "("),
+            Token::RightParen => write!(f, ")"),
+            Token::LeftBrace => write!(f, "{{"),
+            Token::RightBrace => write!(f, "}}"),
+            Token::LeftBracket => write!(f, "["),
+            Token::RightBracket => write!(f, "]"),
+            Token::Plus => write!(f, "+"),
+            Token::Minus => write!(f, "-"),
+            Token::Star => write!(f, "*"),
+            Token::Divide => write!(f, "/"),
+            Token::Modulo => write!(f, "%"),
+            Token::Equals => write!(f, "="),
+            Token::NotEquals => write!(f, "!="),
+            Token::LessThan => write!(f, "<"),
+            Token::LessThanOrEqual => write!(f, "<="),
+            Token::GreaterThan => write!(f, ">"),
+            Token::GreaterThanOrEqual => write!(f, ">="),
+            Token::LogicalAnd => write!(f, "&&"),
+            Token::LogicalOr => write!(f, "||"),
+            Token::LogicalNot => write!(f, "!"),
+            Token::BitwiseAnd => write!(f, "&"),
+            Token::BitwiseOr => write!(f, "|"),
+            Token::BitwiseNot => write!(f, "~"),
+            Token::BitwiseXor => write!(f, "^"),
+            Token::BitwiseLeftShift => write!(f, "<<"),
+            Token::BitwiseRightShift => write!(f, ">>"),
+            Token::Assignment => write!(f, "="),
+            Token::PlusEquals => write!(f, "+="),
+            Token::MinusEquals => write!(f, "-="),
+            Token::StarEquals => write!(f, "*="),
+            Token::DivideEquals => write!(f, "/="),
+            Token::ModuloEquals => write!(f, "%="),
+            Token::BitwiseAndEquals => write!(f, "&="),
+            Token::BitwiseOrEquals => write!(f, "|="),
+            Token::BitwiseXorEquals => write!(f, "^="),
+            Token::BitwiseLeftShiftEquals => write!(f, "<<="),
+            Token::BitwiseRightShiftEquals => write!(f, ">>="),
+            Token::Increment => write!(f, "++"),
+            Token::Decrement => write!(f, "--"),
+            Token::Arrow => write!(f, "->"),
+            Token::QuestionMark => write!(f, "?"),
+            Token::Backslash => write!(f, "\\"),
+            Token::Hash => write!(f, "#"),
+            Token::Type(s) => write!(f, "{}", s),
+            Token::Struct => write!(f, "struct"),
+            Token::Break => write!(f, "break"),
+            Token::Else => write!(f, "else"),
+            Token::Switch => write!(f, "switch"),
+            Token::Case => write!(f, "case"),
+            Token::Enum => write!(f, "enum"),
+            Token::Typedef => write!(f, "typedef"),
+            Token::Return => write!(f, "return"),
+            Token::Union => write!(f, "union"),
+            Token::Continue => write!(f, "continue"),
+            Token::For => write!(f, "for"),
+            Token::Do => write!(f, "do"),
+            Token::If => write!(f, "if"),
+            Token::Static => write!(f, "static"),
+            Token::While => write!(f, "while"),
+            Token::Default => write!(f, "default"),
+            Token::Goto => write!(f, "goto"),
+            Token::Sizeof => write!(f, "sizeof"),
+            Token::Restrict => write!(f, "restrict"),
+            Token::Inline => write!(f, "inline"),
+            Token::Alignas => write!(f, "alignas"),
+            Token::Alignof => write!(f, "alignof"),
+            Token::Atomic => write!(f, "atomic"),
+            Token::Generic => write!(f, "generic"),
+            Token::Noreturn => write!(f, "noreturn"),
+            Token::StaticAssert => write!(f, "static_assert"),
+            Token::ThreadLocal => write!(f, "thread_local"),
+            Token::ConstExpr => write!(f, "constexpr"),
+            Token::Nullptr => write!(f, "nullptr"),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
+            Token::Typeof => write!(f, "typeof"),
+            Token::TypeofUnqual => write!(f, "typeof_unqual"),
+            Token::Private => write!(f, "private"),
+            Token::Class => write!(f, "class"),
+            Token::Tagged => write!(f, "tagged"),
+        }
+    }
+
 }
 
 
@@ -2769,6 +2872,25 @@ pub fn lex<'input>(input: &'input str) -> Result<Vec<Token>, LexerError> {
                     },
                     ParserState::InString(mut string,_) => {
                         string.push_str(&number.to_string());
+                        state = ParserState::InString(string,false);
+                        continue;
+                    },
+                    _ => {},
+                }
+            },
+            TokenPreparse::Tagged => {
+                match state {
+                    ParserState::Normal => {
+                        tokens.push(Token::Tagged);
+                        continue;
+                    },
+                    ParserState::InPreprocessor(mut string,preproc_state) => {
+                        string.push_str("tagged");
+                        state = ParserState::InPreprocessor(string,preproc_state);
+                        continue;
+                    },
+                    ParserState::InString(mut string,_) => {
+                        string.push_str("tagged");
                         state = ParserState::InString(string,false);
                         continue;
                     },
