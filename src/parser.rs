@@ -359,7 +359,7 @@ impl Parser {
                     buffer += 1;
                 },//TODO: add array
                 _ => {
-                    return Err(format!("Unexpected token: {:?}", self.tokens[self.head]));
+                    return Err(format!("Unexpected token: {:?}", self.tokens[buffer]));
                 },
             }
         }
@@ -612,7 +612,7 @@ impl Parser {
                             self.head += 1;
                         },
                         _ => {
-                            return Err("Expected semicolon".to_string());
+                            return Err(format!("Expected semicolon in code block but found {:?} instead", self.tokens[self.head]));
                         },
                     }
                 },
@@ -710,7 +710,7 @@ impl Parser {
                                     return Ok(Statement::Goto(word.clone()));
                                 },
                                 _ => {
-                                    return Err("Expected semicolon".to_string());
+                                    return Err("Expected semicolon in Goto Statement".to_string());
                                 },
                             }
                         },
@@ -732,7 +732,7 @@ impl Parser {
         }
 
         if requires_semicolon {
-            return Err("Expected semicolon".to_string());
+            return Err("Expected semicolon in statement".to_string());
         }
 
         return Ok(Statement::Expression(expression.expect("no expression")));
@@ -1026,6 +1026,26 @@ impl Parser {
                             },
                         }
                     },
+                    Token::LeftBrace => {
+                        self.head += 1;
+                        match expression {
+                            Expression::Identifier(ident) => {
+                                full_expression = Some(
+                                    Expression::TaggedInitializer(ident, Box::new(self.expression(None)?)));
+                                match self.tokens[self.head] {
+                                    Token::RightBrace => {
+                                        self.head += 1;
+                                    },
+                                    _ => return Err(format!("Expected right brace, got {:?}", self.tokens[self.head])),
+                                }
+                            }
+                            _ => {
+                                return Err(format!("Expected identifier, got {:?}", expression));
+                            }
+
+                        }
+
+                    }
                     Token::Plus => {
                         self.head += 1;
                         full_expression = Some(Expression::Binary(
@@ -1518,7 +1538,7 @@ impl Parser {
                         self.head += 1;
                     },
                     _ => {
-                        return Err("Expected semicolon".to_string());
+                        return Err("Expected semicolon in Struct".to_string());
                     },
                 }
                 return Ok(AstNode::Struct(Struct {name: name.to_string(), members}));
@@ -1555,7 +1575,7 @@ impl Parser {
                         self.head += 1;
                     },
                     _ => {
-                        return Err("Expected semicolon".to_string());
+                        return Err("Expected semicolon in Union".to_string());
                     },
                 }
                 return Ok(AstNode::Union(Union {name: name.to_string(), members}));
@@ -1591,7 +1611,7 @@ impl Parser {
                         self.head += 1;
                     },
                     _ => {
-                        return Err("Expected semicolon".to_string());
+                        return Err("Expected semicolon in Enum".to_string());
                     },
                 }
                 return Ok(AstNode::Enum(Enum {name: name.to_string(), members}));
@@ -1653,7 +1673,7 @@ impl Parser {
                         self.head += 1;
                     },
                     _ => {
-                        return Err("Expected semicolon".to_string());
+                        return Err("Expected semicolon in Tagged Union".to_string());
                     },
                 }
                 return Ok(AstNode::TaggedUnion(TaggedUnion {name: name.to_string(), members}));
@@ -1676,6 +1696,15 @@ impl Parser {
                 },
                 Token::LeftBrace => {
                     self.head += 1;
+                    match &self.tokens[self.head] {
+                        Token::Word(_) | Token::Type(_) | Token::Enum |
+                        Token::Struct | Token::Union | Token::Tagged => {
+                            self.head += 1;
+                        },
+                        _ => {
+                            return Err("Expected identifier".to_string());
+                        },
+                    }
                     value = Some(Vec::new());
                     while self.tokens[self.head] != Token::RightBrace {
                         value.as_mut().unwrap().push(match self.variable_list_or_function()? {
@@ -1694,10 +1723,11 @@ impl Parser {
                                 self.head += 1;
                             },
                             Token::RightBrace => {
+                                self.head += 1;
                                 break;
                             },
                             _ => {
-                                return Err("Expected comma or right brace".to_string());
+                                self.head += 1;
                             },
                         }
                     }
@@ -2385,7 +2415,7 @@ mod ast_tests {
 
     #[test]
     fn test_complex_tagged_union() {
-        let input = "tagged foo { a {int a, b, c}, b {char *a; int b;}, c {int a; char *b;}};\nint main() { tagged foo f; f = a {1,2,3}; return 0; }\n";
+        let input = "tagged foo { a {int a, b, c;}, b {char *a; int b;}, c {int a; char *b;}};\nint main() { tagged foo f; f = a {1,2,3}; return 0; }\n";
         println!("Input: {}", input);
         let tokens = match lex(input) {
             Ok(tokens) => tokens,

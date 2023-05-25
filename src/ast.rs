@@ -394,6 +394,7 @@ pub enum Expression {
     CallFunction(String, Option<Box<Expression>>),
     //CallMethod(bool, String, String, Option<Box<Expression>>),
     InitializerList(Box<Expression>),
+    TaggedInitializer(String, Box<Expression>),
     //CompoundLiteral(Type, bool,Initializer),
     //InitializerList(Vec<Initializer>),
     StatementList(StatementList),
